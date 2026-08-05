@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -98,6 +99,56 @@ func Load(r io.Reader) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func New(project Project, cron string) (Config, error) {
+	if cron == "" {
+		cron = DefaultCron
+	}
+	cfg := Config{
+		Version: 1,
+		Defaults: Defaults{
+			Timeout:      10 * time.Second,
+			Retries:      DefaultRetries,
+			RetryBackoff: 2 * time.Second,
+			Concurrency:  DefaultConcurrency,
+			Output:       DefaultOutput,
+		},
+		Scheduler: Scheduler{Cron: cron},
+		Projects:  []Project{project},
+	}
+	return cfg, cfg.Validate()
+}
+
+func Marshal(cfg Config) ([]byte, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	retries, concurrency := cfg.Defaults.Retries, cfg.Defaults.Concurrency
+	wire := wireConfig{
+		Version: cfg.Version,
+		Defaults: wireDefaults{
+			Timeout:      cfg.Defaults.Timeout.String(),
+			Retries:      &retries,
+			RetryBackoff: cfg.Defaults.RetryBackoff.String(),
+			Concurrency:  &concurrency,
+			Output:       cfg.Defaults.Output,
+		},
+		Scheduler: wireScheduler{Cron: cfg.Scheduler.Cron},
+	}
+	for _, project := range cfg.Projects {
+		wire.Projects = append(wire.Projects, wireProject(project))
+	}
+	var buffer bytes.Buffer
+	encoder := yaml.NewEncoder(&buffer)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(wire); err != nil {
+		return nil, fmt.Errorf("encode configuration: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, fmt.Errorf("encode configuration: %w", err)
+	}
+	return buffer.Bytes(), nil
 }
 
 func fromWire(w wireConfig) (Config, error) {
