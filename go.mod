@@ -1,4 +1,4 @@
-module github.com/jfox85/sb-heartbeat
+module github.com/croutoncreations/sb-heartbeat
 
 go 1.24
 

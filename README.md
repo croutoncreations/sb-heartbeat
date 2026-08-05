@@ -16,7 +16,7 @@ password, hosted account, or ongoing database writes.
 ## Quick start
 
 ```bash
-go install github.com/jfox85/sb-heartbeat/cmd/sb-heartbeat@v0.1.0
+go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.1.0
 
 sb-heartbeat init \
   --non-interactive \

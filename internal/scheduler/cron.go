@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jfox85/sb-heartbeat/internal/config"
+	"github.com/croutoncreations/sb-heartbeat/internal/config"
 )
 
 func LocalCron(cfg config.Config, binaryPath, configPath, logPath string) (string, error) {

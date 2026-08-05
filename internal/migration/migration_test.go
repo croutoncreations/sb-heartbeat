@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jfox85/sb-heartbeat/internal/migration"
+	"github.com/croutoncreations/sb-heartbeat/internal/migration"
 )
 
 func TestInstallIsCollisionSafeAndLeastPrivilege(t *testing.T) {

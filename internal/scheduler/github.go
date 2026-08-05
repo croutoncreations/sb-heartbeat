@@ -11,7 +11,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/jfox85/sb-heartbeat/internal/config"
+	"github.com/croutoncreations/sb-heartbeat/internal/config"
 )
 
 const checkoutCommit = "3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           version="${SB_HEARTBEAT_VERSION#v}"
           archive="sb-heartbeat_${version}_linux_amd64.tar.gz"
-          release="https://github.com/jfox85/sb-heartbeat/releases/download/${SB_HEARTBEAT_VERSION}"
+          release="https://github.com/croutoncreations/sb-heartbeat/releases/download/${SB_HEARTBEAT_VERSION}"
           curl --fail --silent --show-error --location --output "${RUNNER_TEMP}/${archive}" "${release}/${archive}"
           curl --fail --silent --show-error --location --output "${RUNNER_TEMP}/checksums.txt" "${release}/checksums.txt"
           grep "  ${archive}$" "${RUNNER_TEMP}/checksums.txt" > "${RUNNER_TEMP}/expected-checksum.txt"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jfox85/sb-heartbeat/internal/credentials"
+	"github.com/croutoncreations/sb-heartbeat/internal/credentials"
 )
 
 func jwt(role string) string {

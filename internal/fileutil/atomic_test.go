@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jfox85/sb-heartbeat/internal/fileutil"
+	"github.com/croutoncreations/sb-heartbeat/internal/fileutil"
 )
 
 func TestWriteAtomicRefusesSymlinkEvenWithForce(t *testing.T) {

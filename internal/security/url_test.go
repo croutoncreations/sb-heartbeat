@@ -3,7 +3,7 @@ package security_test
 import (
 	"testing"
 
-	"github.com/jfox85/sb-heartbeat/internal/security"
+	"github.com/croutoncreations/sb-heartbeat/internal/security"
 )
 
 func TestValidateHostedProjectURL(t *testing.T) {

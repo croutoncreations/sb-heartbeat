@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfox85/sb-heartbeat/internal/cli"
-	"github.com/jfox85/sb-heartbeat/internal/config"
-	"github.com/jfox85/sb-heartbeat/internal/heartbeat"
+	"github.com/croutoncreations/sb-heartbeat/internal/cli"
+	"github.com/croutoncreations/sb-heartbeat/internal/config"
+	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
 )
 
 type harness struct {

@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jfox85/sb-heartbeat/internal/credentials"
-	clientfactory "github.com/jfox85/sb-heartbeat/internal/httpclient"
+	"github.com/croutoncreations/sb-heartbeat/internal/credentials"
+	clientfactory "github.com/croutoncreations/sb-heartbeat/internal/httpclient"
 )
 
 const maxResponseBytes = 64 * 1024

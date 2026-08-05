@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jfox85/sb-heartbeat/internal/config"
-	"github.com/jfox85/sb-heartbeat/internal/scheduler"
+	"github.com/croutoncreations/sb-heartbeat/internal/config"
+	"github.com/croutoncreations/sb-heartbeat/internal/scheduler"
 )
 
 func workflowConfig(t *testing.T) config.Config {
@@ -42,6 +42,7 @@ func TestGitHubWorkflowIsPinnedAndChecksumVerified(t *testing.T) {
 		"permissions:\n  contents: read",
 		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
 		"SB_HEARTBEAT_VERSION: v0.1.0",
+		"https://github.com/croutoncreations/sb-heartbeat/releases/download/${SB_HEARTBEAT_VERSION}",
 		"checksums.txt",
 		"sha256sum --check --strict",
 		"DEMO_URL: ${{ vars.DEMO_URL }}",

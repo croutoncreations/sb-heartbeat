@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jfox85/sb-heartbeat/internal/config"
-	"github.com/jfox85/sb-heartbeat/internal/credentials"
-	"github.com/jfox85/sb-heartbeat/internal/fileutil"
-	"github.com/jfox85/sb-heartbeat/internal/heartbeat"
-	"github.com/jfox85/sb-heartbeat/internal/migration"
-	"github.com/jfox85/sb-heartbeat/internal/output"
-	"github.com/jfox85/sb-heartbeat/internal/scheduler"
-	"github.com/jfox85/sb-heartbeat/internal/security"
+	"github.com/croutoncreations/sb-heartbeat/internal/config"
+	"github.com/croutoncreations/sb-heartbeat/internal/credentials"
+	"github.com/croutoncreations/sb-heartbeat/internal/fileutil"
+	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
+	"github.com/croutoncreations/sb-heartbeat/internal/migration"
+	"github.com/croutoncreations/sb-heartbeat/internal/output"
+	"github.com/croutoncreations/sb-heartbeat/internal/scheduler"
+	"github.com/croutoncreations/sb-heartbeat/internal/security"
 	"github.com/spf13/cobra"
 )
 

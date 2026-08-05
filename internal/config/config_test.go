@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfox85/sb-heartbeat/internal/config"
+	"github.com/croutoncreations/sb-heartbeat/internal/config"
 )
 
 const validConfig = `

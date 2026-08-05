@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfox85/sb-heartbeat/internal/heartbeat"
-	"github.com/jfox85/sb-heartbeat/internal/output"
+	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
+	"github.com/croutoncreations/sb-heartbeat/internal/output"
 )
 
 func intPointer(value int) *int       { return &value }

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jfox85/sb-heartbeat/internal/scheduler"
+	"github.com/croutoncreations/sb-heartbeat/internal/scheduler"
 )
 
 func TestLocalCronPrintsShellSafeReadOnlySuggestion(t *testing.T) {
