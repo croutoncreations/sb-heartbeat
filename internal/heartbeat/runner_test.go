@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -365,6 +366,9 @@ func TestRetryAfterParsing(t *testing.T) {
 	}
 	if delay, ok := retryAfter("999", time.Now()); !ok || delay != 30*time.Second {
 		t.Fatalf("retryAfter(999) = %s, %v", delay, ok)
+	}
+	if delay, ok := retryAfter(fmt.Sprint(math.MaxInt), time.Now()); !ok || delay != 30*time.Second {
+		t.Fatalf("retryAfter(MaxInt) = %s, %v", delay, ok)
 	}
 	if _, ok := retryAfter("nonsense", time.Now()); ok {
 		t.Fatal("retryAfter(nonsense) accepted")

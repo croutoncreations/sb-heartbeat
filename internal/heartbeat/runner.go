@@ -305,8 +305,11 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 }
 
 func retryAfter(raw string, now time.Time) (time.Duration, bool) {
-	if seconds, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && seconds >= 0 {
-		return min(time.Duration(seconds)*time.Second, 30*time.Second), true
+	if seconds, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64); err == nil {
+		if seconds >= 30 {
+			return 30 * time.Second, true
+		}
+		return time.Duration(seconds) * time.Second, true
 	}
 	if date, err := http.ParseTime(raw); err == nil && date.After(now) {
 		return min(date.Sub(now), 30*time.Second), true

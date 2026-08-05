@@ -18,8 +18,6 @@ jobs:
     timeout-minutes: 5
     env:
       SB_HEARTBEAT_VERSION: v0.1.0
-      DEMO_URL: ${{ vars.DEMO_URL }}
-      DEMO_KEY: ${{ secrets.DEMO_KEY }}
     steps:
       - name: Check out configuration
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,6 +38,9 @@ jobs:
           echo "${RUNNER_TEMP}/sb-heartbeat-bin" >> "${GITHUB_PATH}"
 
       - name: Run heartbeats
+        env:
+          DEMO_URL: ${{ vars.DEMO_URL }}
+          DEMO_KEY: ${{ secrets.DEMO_KEY }}
         shell: bash
         run: |
           set -o pipefail

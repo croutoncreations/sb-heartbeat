@@ -96,7 +96,7 @@ func TestInternalOutputFailureUsesExitThree(t *testing.T) {
 	}}
 	deps := h.dependencies()
 	deps.Stdout = failingWriter{}
-	if code := cli.Execute(context.Background(), []string{"--config", path, "--output", "json", "run"}, deps); code != 3 {
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--output", "json"}, deps); code != 3 {
 		t.Fatalf("code = %d, want 3", code)
 	}
 }
@@ -175,7 +175,7 @@ projects:
 	deps := h.dependencies()
 	deps.Stdout = failingWriter{}
 
-	if code := cli.Execute(context.Background(), []string{"--config", path, "--output", "json", "run"}, deps); code != 3 {
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--output", "json"}, deps); code != 3 {
 		t.Fatalf("code = %d, want 3; stderr = %q", code, h.stderr.String())
 	}
 }
@@ -189,6 +189,13 @@ func TestRunnerResultCountMismatchUsesExitThree(t *testing.T) {
 	}, result: []heartbeat.Result{}}
 	if code := cli.Execute(context.Background(), []string{"--config", path, "run"}, h.dependencies()); code != 3 {
 		t.Fatalf("code = %d, want 3", code)
+	}
+}
+
+func TestOutputFormatFlagIsRejectedOutsideCheckCommands(t *testing.T) {
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"version", "--output", "json"}, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, h.stdout.String(), h.stderr.String())
 	}
 }
 
@@ -223,7 +230,7 @@ func TestRunPreflightCollectsErrorsAndMakesNoRequests(t *testing.T) {
 		"SECOND_URL": "https://bad.example.com",
 	}}
 
-	code := cli.Execute(context.Background(), []string{"--config", path, "--output", "json", "run"}, h.dependencies())
+	code := cli.Execute(context.Background(), []string{"--config", path, "run", "--output", "json"}, h.dependencies())
 	if code != 2 || h.called {
 		t.Fatalf("code = %d, runner called = %v", code, h.called)
 	}
@@ -244,7 +251,7 @@ func TestRunPreflightElevatedKeyUsesCredentialRejectedCode(t *testing.T) {
 		"FIRST_KEY": "sb_secret_review_fixture_not_a_real_key",
 	}}
 
-	code := cli.Execute(context.Background(), []string{"--config", path, "--output", "json", "run"}, h.dependencies())
+	code := cli.Execute(context.Background(), []string{"--config", path, "run", "--output", "json"}, h.dependencies())
 	if code != 2 || h.called {
 		t.Fatalf("code = %d, runner called = %v", code, h.called)
 	}
@@ -459,6 +466,61 @@ func TestInstallGitHubGeneratesWorkflowAndRefusesOverwrite(t *testing.T) {
 	}
 	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
 		t.Fatalf("overwrite code = %d", code)
+	}
+}
+
+func TestInstallGitHubUsesCustomConfigPathByDefault(t *testing.T) {
+	dir := t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	if err := os.MkdirAll("config", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeConfig(t, "config", strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	h := &harness{}
+	args := []string{"--config", "config/sb-heartbeat.yaml", "install", "github", "--sb-heartbeat-version", "v0.1.0"}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	data, err := os.ReadFile(filepath.Join(".github", "workflows", "sb-heartbeat.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "--config config/sb-heartbeat.yaml") {
+		t.Fatalf("workflow uses wrong config path:\n%s", data)
+	}
+}
+
+func TestInitGitHubUsesCustomOutputPathByDefault(t *testing.T) {
+	dir := t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", "config/custom.yaml",
+		"--project-name", "demo", "--scheduler", "github", "--sb-heartbeat-version", "v0.1.0",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	data, err := os.ReadFile(filepath.Join(".github", "workflows", "sb-heartbeat.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "--config config/custom.yaml") {
+		t.Fatalf("workflow uses wrong config path:\n%s", data)
 	}
 }
 

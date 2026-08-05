@@ -17,7 +17,7 @@ func ValidateHostedProjectURL(raw string) (*url.URL, error) {
 	if u.Scheme != "https" || u.Opaque != "" {
 		return nil, errors.New("project URL must use HTTPS")
 	}
-	if u.User != nil || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" {
+	if u.User != nil || u.Port() != "" || strings.HasSuffix(u.Host, ":") || strings.ContainsAny(raw, "?#") {
 		return nil, errors.New("project URL must be a bare hosted Supabase origin")
 	}
 	if u.Path != "" && u.Path != "/" {

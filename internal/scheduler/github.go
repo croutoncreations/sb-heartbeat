@@ -88,10 +88,6 @@ jobs:
     timeout-minutes: {{ .TimeoutMinutes }}
     env:
       SB_HEARTBEAT_VERSION: {{ .Version }}
-{{- range .Projects }}
-      {{ .URL.Env }}: ${{ "{{" }} vars.{{ .URL.Env }} {{ "}}" }}
-      {{ .APIKey.Env }}: ${{ "{{" }} secrets.{{ .APIKey.Env }} {{ "}}" }}
-{{- end }}
     steps:
       - name: Check out configuration
         uses: actions/checkout@` + checkoutCommit + ` # v7.0.1
@@ -112,6 +108,11 @@ jobs:
           echo "${RUNNER_TEMP}/sb-heartbeat-bin" >> "${GITHUB_PATH}"
 
       - name: Run heartbeats
+        env:
+{{- range .Projects }}
+          {{ .URL.Env }}: ${{ "{{" }} vars.{{ .URL.Env }} {{ "}}" }}
+          {{ .APIKey.Env }}: ${{ "{{" }} secrets.{{ .APIKey.Env }} {{ "}}" }}
+{{- end }}
         shell: bash
         run: |
           set -o pipefail

@@ -57,6 +57,11 @@ func TestGitHubWorkflowIsPinnedAndChecksumVerified(t *testing.T) {
 	if strings.Contains(text, "curl | sh") || strings.Contains(text, "@v7") {
 		t.Errorf("workflow contains an unsafe floating installer/action\n%s", text)
 	}
+	runStep := strings.Index(text, "      - name: Run heartbeats")
+	keyBinding := strings.Index(text, "DEMO_KEY: ${{ secrets.DEMO_KEY }}")
+	if runStep < 0 || keyBinding < runStep {
+		t.Errorf("client key is exposed before the heartbeat step\n%s", text)
+	}
 	goldenPath := filepath.Join("testdata", "github-workflow.yml.golden")
 	golden, err := os.ReadFile(goldenPath)
 	if err != nil {
@@ -64,6 +69,20 @@ func TestGitHubWorkflowIsPinnedAndChecksumVerified(t *testing.T) {
 	}
 	if text != string(golden) {
 		t.Fatalf("generated workflow differs from %s", goldenPath)
+	}
+}
+
+func TestReleaseWorkflowUsesProtectedHostedEnvironment(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(workflow)
+	hostedJob := strings.Index(text, "  hosted-supabase:")
+	releaseJob := strings.Index(text, "  release:")
+	protectedEnvironment := strings.Index(text, "    environment: hosted-supabase-release")
+	if hostedJob < 0 || releaseJob < 0 || protectedEnvironment < hostedJob || protectedEnvironment > releaseJob {
+		t.Fatalf("hosted integration job does not use the documented protected environment\n%s", text)
 	}
 }
 

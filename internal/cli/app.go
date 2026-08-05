@@ -117,7 +117,6 @@ func (a *app) rootCommand() *cobra.Command {
 		SilenceUsage:  true,
 	}
 	root.PersistentFlags().StringVar(&a.configPath, "config", "sb-heartbeat.yaml", "configuration file")
-	root.PersistentFlags().StringVar(&a.outputMode, "output", "", "output format: text or json")
 	root.AddCommand(a.runCommand(false), a.runCommand(true), a.initCommand(), a.migrationCommand(), a.installCommand())
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
@@ -145,6 +144,7 @@ func (a *app) runCommand(doctor bool) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&selectedProject, "project", "", "run only the named project")
+	command.Flags().StringVar(&a.outputMode, "output", "", "output format: text or json")
 	return command
 }
 
@@ -331,7 +331,11 @@ func (a *app) initCommand() *cobra.Command {
 				if schedulerName != "github" {
 					return &commandError{stableCode: "invalid_invocation", message: "scheduler must be github"}
 				}
-				workflow, err = scheduler.GitHub(cfg, sbHeartbeatVersion, workflowConfig)
+				effectiveConfigPath, pathErr := resolveWorkflowConfigPath(workflowConfig, outputPath, workflowOutput)
+				if pathErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: pathErr.Error()}
+				}
+				workflow, err = scheduler.GitHub(cfg, sbHeartbeatVersion, effectiveConfigPath)
 				if err != nil {
 					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 				}
@@ -380,7 +384,7 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&migrationOutput, "migration-output", "", "also write the install migration to this exact path")
 	command.Flags().StringVar(&schedulerName, "scheduler", "", "also generate a scheduler: github")
 	command.Flags().StringVar(&workflowOutput, "workflow-output", ".github/workflows/sb-heartbeat.yml", "GitHub workflow output path")
-	command.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
+	command.Flags().StringVar(&workflowConfig, "workflow-config", "", "repository-relative config path used by GitHub Actions (defaults to the generated config path)")
 	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag for generated automation")
 	return command
 }
@@ -421,7 +425,11 @@ func (a *app) installCommand() *cobra.Command {
 			if closeErr != nil {
 				return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
 			}
-			workflow, err := scheduler.GitHub(cfg, version, workflowConfig)
+			effectiveConfigPath, pathErr := resolveWorkflowConfigPath(workflowConfig, a.configPath, outputPath)
+			if pathErr != nil {
+				return &commandError{stableCode: "invalid_invocation", message: pathErr.Error()}
+			}
+			workflow, err := scheduler.GitHub(cfg, version, effectiveConfigPath)
 			if err != nil {
 				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 			}
@@ -434,7 +442,7 @@ func (a *app) installCommand() *cobra.Command {
 	}
 	github.Flags().StringVar(&outputPath, "output-path", ".github/workflows/sb-heartbeat.yml", "workflow output path")
 	github.Flags().StringVar(&version, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag")
-	github.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
+	github.Flags().StringVar(&workflowConfig, "workflow-config", "", "repository-relative config path used by GitHub Actions (defaults to --config)")
 	github.Flags().BoolVar(&force, "force", false, "replace the exact output file")
 
 	var cronBinaryPath, cronLogPath string
@@ -561,6 +569,33 @@ func validateDistinctOutputPaths(paths []string) error {
 		seen[resolved] = outputPath
 	}
 	return nil
+}
+
+func resolveWorkflowConfigPath(explicitPath, configPath, workflowPath string) (string, error) {
+	if explicitPath != "" {
+		return filepath.ToSlash(explicitPath), nil
+	}
+	if !filepath.IsAbs(configPath) {
+		return filepath.ToSlash(filepath.Clean(configPath)), nil
+	}
+	configAbsolute, err := filepath.Abs(configPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve generated configuration path: %w", err)
+	}
+	workflowAbsolute, err := filepath.Abs(workflowPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve generated workflow path: %w", err)
+	}
+	workflowDirectory := filepath.Dir(workflowAbsolute)
+	if filepath.Base(workflowDirectory) != "workflows" || filepath.Base(filepath.Dir(workflowDirectory)) != ".github" {
+		return "", errors.New("cannot infer repository root from workflow output; supply --workflow-config")
+	}
+	repositoryRoot := filepath.Dir(filepath.Dir(workflowDirectory))
+	relative, err := filepath.Rel(repositoryRoot, configAbsolute)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", errors.New("configuration is outside the generated workflow repository; supply --workflow-config")
+	}
+	return filepath.ToSlash(relative), nil
 }
 
 func currentVersion() string {

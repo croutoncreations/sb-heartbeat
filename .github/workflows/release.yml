@@ -14,6 +14,7 @@ jobs:
 
   hosted-supabase:
     runs-on: ubuntu-latest
+    environment: hosted-supabase-release
     permissions:
       contents: read
     steps:

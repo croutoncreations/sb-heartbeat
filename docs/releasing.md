@@ -6,7 +6,7 @@ and workflow goldens, and the disposable PostgreSQL suite. It then requires a
 live test against a dedicated hosted Supabase project before GoReleaser runs.
 
 Configure these GitHub Actions secrets only for a disposable integration
-project:
+project in the protected `hosted-supabase-release` environment:
 
 - `SB_HEARTBEAT_HOSTED_DATABASE_URL`
 - `SB_HEARTBEAT_HOSTED_URL`
