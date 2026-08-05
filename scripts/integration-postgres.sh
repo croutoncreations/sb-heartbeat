@@ -54,9 +54,11 @@ SQL
 
 row_check="$("${psql_command[@]}" --tuples-only --no-align --command "select count(*) = 1 and bool_and(id) from public.sb_heartbeat;")"
 grant_check="$("${psql_command[@]}" --tuples-only --no-align --command "select has_column_privilege('anon','public.sb_heartbeat','id','select'), has_column_privilege('anon','public.sb_heartbeat','created_at','select'), has_column_privilege('authenticated','public.sb_heartbeat','id','select'), has_column_privilege('service_role','public.sb_heartbeat','id','select');")"
+mutation_check="$("${psql_command[@]}" --tuples-only --no-align --command "select has_table_privilege('anon','public.sb_heartbeat','insert'), has_any_column_privilege('anon','public.sb_heartbeat','insert'), has_table_privilege('anon','public.sb_heartbeat','update'), has_any_column_privilege('anon','public.sb_heartbeat','update'), has_table_privilege('anon','public.sb_heartbeat','delete'), has_table_privilege('authenticated','public.sb_heartbeat','insert'), has_any_column_privilege('authenticated','public.sb_heartbeat','insert'), has_table_privilege('authenticated','public.sb_heartbeat','update'), has_any_column_privilege('authenticated','public.sb_heartbeat','update'), has_table_privilege('authenticated','public.sb_heartbeat','delete'), has_table_privilege('service_role','public.sb_heartbeat','insert'), has_any_column_privilege('service_role','public.sb_heartbeat','insert'), has_table_privilege('service_role','public.sb_heartbeat','update'), has_any_column_privilege('service_role','public.sb_heartbeat','update'), has_table_privilege('service_role','public.sb_heartbeat','delete');")"
 marker_check="$("${psql_command[@]}" --tuples-only --no-align --command "select obj_description('public.sb_heartbeat'::regclass, 'pg_class');")"
 [[ "${row_check}" == "t" ]]
 [[ "${grant_check}" == "t|f|f|f" ]]
+[[ "${mutation_check}" == "f|f|f|f|f|f|f|f|f|f|f|f|f|f|f" ]]
 [[ "${marker_check}" == "sb-heartbeat:managed:v1" ]]
 "${psql_command[@]}" --command "set role anon; select id from public.sb_heartbeat;" >/dev/null
 if "${psql_command[@]}" --command "set role anon; select created_at from public.sb_heartbeat;" >/dev/null 2>&1; then

@@ -30,6 +30,13 @@ func TestGitHubWorkflowIsPinnedAndChecksumVerified(t *testing.T) {
 	}
 	text := string(workflow)
 	required := []string{
+		"Scheduled cron expressions use UTC",
+		"latest commit on the default branch",
+		"may be delayed or dropped",
+		"inactive public repositories",
+		"Store project URLs as repository variables",
+		"low-privilege client keys as repository secrets",
+		"storage policy remains the repository owner's choice",
 		`cron: "37 3,11,19 * * *"`,
 		"workflow_dispatch:",
 		"permissions:\n  contents: read",
