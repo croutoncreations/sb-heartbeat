@@ -2,7 +2,9 @@ package heartbeat
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -161,6 +163,47 @@ func TestCheckTimeoutRetriesThenClassifies(t *testing.T) {
 	}
 }
 
+func TestCheckResponseBodyTimeoutRetriesAndPreservesStatus(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	runner := NewRunner(Options{Timeout: durationPointer(10 * time.Millisecond), RetryBackoff: durationPointer(time.Millisecond)})
+	result := runner.Check(context.Background(), projectFor(t, "demo", server.URL))
+	if result.Status != Timeout || result.Attempts != 2 || calls.Load() != 2 {
+		t.Fatalf("result = %+v, calls = %d", result, calls.Load())
+	}
+	if result.HTTPStatus == nil || *result.HTTPStatus != http.StatusOK {
+		t.Fatalf("HTTP status = %v", result.HTTPStatus)
+	}
+}
+
+func TestCheckTruncatedBodyRetries(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if calls.Add(1) == 1 {
+			w.Header().Set("Content-Length", "100")
+			fmt.Fprint(w, `[{"id":`)
+			return
+		}
+		fmt.Fprint(w, `[{"id":true}]`)
+	}))
+	defer server.Close()
+
+	runner := NewRunner(Options{RetryBackoff: durationPointer(time.Millisecond)})
+	result := runner.Check(context.Background(), projectFor(t, "demo", server.URL))
+	if result.Status != Healthy || result.Attempts != 2 || calls.Load() != 2 {
+		t.Fatalf("result = %+v, calls = %d", result, calls.Load())
+	}
+}
+
 func TestCheckRejectsCredentialBeforeNetwork(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -258,6 +301,61 @@ func TestCheckClassifiesCertificateFailureWithoutRetry(t *testing.T) {
 	result := NewRunner(Options{}).Check(context.Background(), projectFor(t, "demo", server.URL))
 	if result.Status != TLSFailure || result.Attempts != 1 {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestCheckClassifiesInvalidTLSRecordWithoutRetry(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer server.Close()
+	project := projectFor(t, "demo", server.URL)
+	project.BaseURL.Scheme = "https"
+
+	result := NewRunner(Options{}).Check(context.Background(), project)
+	if result.Status != TLSFailure || result.Attempts != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestCheckRetriesTransientTLSHandshakeFailure(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	server.TLS = &tls.Config{ClientAuth: tls.RequireAnyClientCert}
+	server.StartTLS()
+	defer server.Close()
+
+	runner := NewRunner(Options{Client: server.Client(), RetryBackoff: durationPointer(time.Millisecond)})
+	result := runner.Check(context.Background(), projectFor(t, "demo", server.URL))
+	if result.Status != TLSFailure || result.Attempts != 2 {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestCheckClassifiesHandshakeEOFAsTLSFailure(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 2 {
+			connection, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			connection.Close()
+		}
+	}()
+
+	runner := NewRunner(Options{RetryBackoff: durationPointer(time.Millisecond)})
+	result := runner.Check(context.Background(), projectFor(t, "demo", "https://"+listener.Addr().String()))
+	if result.Status != TLSFailure || result.Attempts != 2 {
+		t.Fatalf("result = %+v", result)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("TLS fixture did not receive both attempts")
 	}
 }
 

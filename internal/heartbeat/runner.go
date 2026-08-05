@@ -2,6 +2,7 @@ package heartbeat
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -118,7 +120,7 @@ func (r *Runner) Check(ctx context.Context, project Project) Result {
 		response, requestErr := r.client.Do(req)
 		if requestErr != nil {
 			cancel()
-			status, retry := classifyTransport(requestErr, ctx)
+			status, retry := classifyTransport(requestErr, ctx, project.BaseURL.Scheme == "https")
 			if retry && attempts <= r.retries {
 				if sleepContext(ctx, r.backoff(attempts)) == nil {
 					continue
@@ -130,11 +132,19 @@ func (r *Runner) Check(ctx context.Context, project Project) Result {
 
 		body, tooLarge, readErr := readBounded(response.Body, maxResponseBytes)
 		response.Body.Close()
-		cancel()
 		httpStatus := response.StatusCode
 		if readErr != nil {
-			return failed(project.Name, UnexpectedResponse, "could not read response", &httpStatus, elapsedMS(started), attempts)
+			status, retry := classifyTransport(readErr, attemptCtx, false)
+			cancel()
+			if retry && attempts <= r.retries {
+				if sleepContext(ctx, r.backoff(attempts)) == nil {
+					continue
+				}
+				return failed(project.Name, Timeout, "request canceled during retry backoff", &httpStatus, elapsedMS(started), attempts)
+			}
+			return failed(project.Name, status, transportMessage(status), &httpStatus, elapsedMS(started), attempts)
 		}
+		cancel()
 		if tooLarge {
 			return failed(project.Name, ResponseTooLarge, "response exceeded 64 KiB", &httpStatus, elapsedMS(started), attempts)
 		}
@@ -223,7 +233,7 @@ func classifyResponse(response *http.Response, body []byte) (Status, string, boo
 	return Healthy, "", false
 }
 
-func classifyTransport(err error, parent context.Context) (Status, bool) {
+func classifyTransport(err error, parent context.Context, tlsExpected bool) (Status, bool) {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(parent.Err(), context.Canceled) || errors.Is(parent.Err(), context.DeadlineExceeded) {
 		return Timeout, true
 	}
@@ -234,14 +244,42 @@ func classifyTransport(err error, parent context.Context) (Status, bool) {
 	var unknownAuthority x509.UnknownAuthorityError
 	var hostnameError x509.HostnameError
 	var invalidCertificate x509.CertificateInvalidError
-	if errors.As(err, &unknownAuthority) || errors.As(err, &hostnameError) || errors.As(err, &invalidCertificate) {
+	var verificationError *tls.CertificateVerificationError
+	var recordHeaderError tls.RecordHeaderError
+	if errors.As(err, &unknownAuthority) || errors.As(err, &hostnameError) || errors.As(err, &invalidCertificate) ||
+		errors.As(err, &verificationError) || errors.As(err, &recordHeaderError) {
 		return TLSFailure, false
+	}
+	if strings.Contains(err.Error(), "server gave HTTP response to HTTPS client") {
+		return TLSFailure, false
+	}
+	if containsTLSError(err) {
+		return TLSFailure, true
+	}
+	if tlsExpected && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+		return TLSFailure, true
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return Timeout, true
 	}
 	return TemporaryUpstreamFailure, true
+}
+
+func containsTLSError(err error) bool {
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		typeOfError := reflect.TypeOf(current)
+		if typeOfError == nil {
+			continue
+		}
+		if typeOfError.Kind() == reflect.Pointer {
+			typeOfError = typeOfError.Elem()
+		}
+		if typeOfError.PkgPath() == "crypto/tls" {
+			return true
+		}
+	}
+	return false
 }
 
 func readBounded(body io.Reader, maximum int64) ([]byte, bool, error) {
