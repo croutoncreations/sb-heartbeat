@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -46,6 +47,11 @@ type commandError struct {
 }
 
 func (e *commandError) Error() string { return e.message }
+
+type preflightProblem struct {
+	code    string
+	message string
+}
 
 func Execute(ctx context.Context, args []string, dependencies Dependencies) int {
 	dependencies = withDefaults(dependencies)
@@ -96,6 +102,7 @@ func withDefaults(dependencies Dependencies) Dependencies {
 }
 
 func (a *app) rootCommand() *cobra.Command {
+	version := currentVersion()
 	root := &cobra.Command{
 		Use:           "sb-heartbeat",
 		Short:         "Run least-privilege Supabase database heartbeats",
@@ -109,7 +116,7 @@ func (a *app) rootCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Fprintln(a.dependencies.Stdout, Version)
+			fmt.Fprintln(a.dependencies.Stdout, version)
 		},
 	})
 	return root
@@ -135,17 +142,21 @@ func (a *app) runCommand(doctor bool) *cobra.Command {
 }
 
 func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor bool) error {
-	file, err := os.Open(a.configPath)
+	resolvedConfigPath, err := filepath.Abs(a.configPath)
 	if err != nil {
-		return &commandError{stableCode: "invalid_configuration", message: "open configuration: " + err.Error()}
+		return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
+	}
+	file, err := os.Open(resolvedConfigPath)
+	if err != nil {
+		return &commandError{stableCode: "invalid_configuration", message: "open configuration " + resolvedConfigPath + ": " + err.Error()}
 	}
 	cfg, loadErr := config.Load(file)
 	closeErr := file.Close()
 	if loadErr != nil {
-		return &commandError{stableCode: "invalid_configuration", message: loadErr.Error()}
+		return &commandError{stableCode: "invalid_configuration", message: "load configuration " + resolvedConfigPath + ": " + loadErr.Error()}
 	}
 	if closeErr != nil {
-		return &commandError{stableCode: "invalid_configuration", message: "close configuration: " + closeErr.Error()}
+		return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
 	}
 
 	configured := cfg.Projects
@@ -164,7 +175,15 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 
 	projects, problems := a.resolveProjects(configured)
 	if len(problems) > 0 {
-		return &commandError{stableCode: "missing_input", message: strings.Join(problems, "; ")}
+		messages := make([]string, 0, len(problems))
+		stableCode := "missing_input"
+		for _, problem := range problems {
+			messages = append(messages, problem.message)
+			if problem.code == "credential_rejected" {
+				stableCode = problem.code
+			}
+		}
+		return &commandError{stableCode: stableCode, message: strings.Join(messages, "; ")}
 	}
 	mode := a.outputMode
 	if mode == "" {
@@ -214,25 +233,25 @@ func doctorGuidance(status heartbeat.Status) string {
 	}
 }
 
-func (a *app) resolveProjects(configured []config.Project) ([]heartbeat.Project, []string) {
+func (a *app) resolveProjects(configured []config.Project) ([]heartbeat.Project, []preflightProblem) {
 	projects := make([]heartbeat.Project, 0, len(configured))
-	var problems []string
+	var problems []preflightProblem
 	for _, project := range configured {
 		rawURL, ok := a.dependencies.LookupEnv(project.URL.Env)
 		if !ok || rawURL == "" {
-			problems = append(problems, project.Name+": missing environment variable "+project.URL.Env)
+			problems = append(problems, preflightProblem{code: "missing_input", message: project.Name + ": missing environment variable " + project.URL.Env})
 		}
 		key, keyOK := a.dependencies.LookupEnv(project.APIKey.Env)
 		if !keyOK || key == "" {
-			problems = append(problems, project.Name+": missing environment variable "+project.APIKey.Env)
+			problems = append(problems, preflightProblem{code: "missing_input", message: project.Name + ": missing environment variable " + project.APIKey.Env})
 		}
 		validatedURL, urlErr := security.ValidateHostedProjectURL(rawURL)
 		if ok && rawURL != "" && urlErr != nil {
-			problems = append(problems, project.Name+": "+urlErr.Error())
+			problems = append(problems, preflightProblem{code: "missing_input", message: project.Name + ": " + urlErr.Error()})
 		}
 		if keyOK && key != "" {
 			if _, err := credentials.Classify(key); err != nil {
-				problems = append(problems, project.Name+": "+err.Error())
+				problems = append(problems, preflightProblem{code: "credential_rejected", message: project.Name + ": " + err.Error()})
 			}
 		}
 		if ok && rawURL != "" && urlErr == nil && keyOK && key != "" {
@@ -315,20 +334,20 @@ func (a *app) initCommand() *cobra.Command {
 				}
 			}
 			if err := fileutil.CheckTarget(outputPath, force); err != nil {
-				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+				return generatedFileCommandError(err, "")
 			}
 			if workflow != nil {
 				if err := fileutil.CheckTarget(workflowOutput, force); err != nil {
-					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+					return generatedFileCommandError(err, "")
 				}
 			}
 			if err := fileutil.WriteAtomic(outputPath, data, 0o644, force); err != nil {
-				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+				return generatedFileCommandError(err, "")
 			}
 			fmt.Fprintln(a.dependencies.Stdout, "Created", outputPath)
 			if workflow != nil {
 				if err := fileutil.WriteAtomic(workflowOutput, workflow, 0o644, force); err != nil {
-					return &commandError{stableCode: "invalid_invocation", message: "configuration was created, but workflow creation failed: " + err.Error()}
+					return generatedFileCommandError(err, "configuration was created, but workflow creation failed: ")
 				}
 				fmt.Fprintln(a.dependencies.Stdout, "Created", workflowOutput)
 			}
@@ -345,7 +364,7 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&schedulerName, "scheduler", "", "also generate a scheduler: github")
 	command.Flags().StringVar(&workflowOutput, "workflow-output", ".github/workflows/sb-heartbeat.yml", "GitHub workflow output path")
 	command.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
-	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", Version, "exact SB Heartbeat release tag for generated automation")
+	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag for generated automation")
 	return command
 }
 
@@ -358,31 +377,35 @@ func (a *app) installCommand() *cobra.Command {
 		Short: "Generate a GitHub Actions workflow",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			file, err := os.Open(a.configPath)
+			resolvedConfigPath, err := filepath.Abs(a.configPath)
 			if err != nil {
-				return &commandError{stableCode: "invalid_configuration", message: "open configuration: " + err.Error()}
+				return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
+			}
+			file, err := os.Open(resolvedConfigPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "open configuration " + resolvedConfigPath + ": " + err.Error()}
 			}
 			cfg, loadErr := config.Load(file)
 			closeErr := file.Close()
 			if loadErr != nil {
-				return &commandError{stableCode: "invalid_configuration", message: loadErr.Error()}
+				return &commandError{stableCode: "invalid_configuration", message: "load configuration " + resolvedConfigPath + ": " + loadErr.Error()}
 			}
 			if closeErr != nil {
-				return &commandError{stableCode: "invalid_configuration", message: closeErr.Error()}
+				return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
 			}
 			workflow, err := scheduler.GitHub(cfg, version, workflowConfig)
 			if err != nil {
 				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 			}
 			if err := fileutil.WriteAtomic(outputPath, workflow, 0o644, force); err != nil {
-				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+				return generatedFileCommandError(err, "")
 			}
 			fmt.Fprintln(a.dependencies.Stdout, "Created", outputPath)
 			return nil
 		},
 	}
 	github.Flags().StringVar(&outputPath, "output-path", ".github/workflows/sb-heartbeat.yml", "workflow output path")
-	github.Flags().StringVar(&version, "sb-heartbeat-version", Version, "exact SB Heartbeat release tag")
+	github.Flags().StringVar(&version, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag")
 	github.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
 	github.Flags().BoolVar(&force, "force", false, "replace the exact output file")
 	parent.AddCommand(github)
@@ -432,7 +455,7 @@ func (a *app) migrationLeaf(name string, generate func() string) *cobra.Command 
 				return nil
 			}
 			if err := fileutil.WriteAtomic(outputPath, data, 0o644, force); err != nil {
-				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+				return generatedFileCommandError(err, "")
 			}
 			fmt.Fprintln(a.dependencies.Stdout, "Created", outputPath)
 			return nil
@@ -441,4 +464,30 @@ func (a *app) migrationLeaf(name string, generate func() string) *cobra.Command 
 	command.Flags().StringVar(&outputPath, "output", "", "write SQL to this path")
 	command.Flags().BoolVar(&force, "force", false, "replace the exact output file")
 	return command
+}
+
+func generatedFileCommandError(err error, prefix string) *commandError {
+	stableCode := "internal_error"
+	if fileutil.IsTargetError(err) {
+		stableCode = "invalid_invocation"
+	}
+	return &commandError{stableCode: stableCode, message: prefix + err.Error()}
+}
+
+func currentVersion() string {
+	moduleVersion := ""
+	if info, ok := debug.ReadBuildInfo(); ok {
+		moduleVersion = info.Main.Version
+	}
+	return resolveVersion(Version, moduleVersion)
+}
+
+func resolveVersion(linkerVersion, moduleVersion string) string {
+	if linkerVersion != "" && linkerVersion != "devel" {
+		return linkerVersion
+	}
+	if moduleVersion != "" && moduleVersion != "(devel)" {
+		return moduleVersion
+	}
+	return "devel"
 }

@@ -150,6 +150,77 @@ func TestRunPreflightCollectsErrorsAndMakesNoRequests(t *testing.T) {
 	}
 }
 
+func TestRunPreflightElevatedKeyUsesCredentialRejectedCode(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_secret_review_fixture_not_a_real_key",
+	}}
+
+	code := cli.Execute(context.Background(), []string{"--config", path, "--output", "json", "run"}, h.dependencies())
+	if code != 2 || h.called {
+		t.Fatalf("code = %d, runner called = %v", code, h.called)
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(h.stdout.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Error.Code != "credential_rejected" {
+		t.Fatalf("code = %q, output = %s", envelope.Error.Code, h.stdout.String())
+	}
+	if strings.Contains(h.stdout.String(), h.env["FIRST_KEY"]) {
+		t.Fatal("output contains complete rejected key")
+	}
+}
+
+func TestMissingConfigurationDiagnosticUsesAbsolutePath(t *testing.T) {
+	relativePath := filepath.Join("missing", "sb-heartbeat.yaml")
+	absolutePath, err := filepath.Abs(relativePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"--config", relativePath, "run"}, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d", code)
+	}
+	if !strings.Contains(h.stderr.String(), absolutePath) {
+		t.Fatalf("diagnostic = %q, want absolute path %q", h.stderr.String(), absolutePath)
+	}
+}
+
+func TestInvalidConfigurationDiagnosticUsesAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "invalid.yaml")
+	if err := os.WriteFile(path, []byte("version: nope\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run"}, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d", code)
+	}
+	if !strings.Contains(h.stderr.String(), path) {
+		t.Fatalf("diagnostic = %q, want path %q", h.stderr.String(), path)
+	}
+}
+
+func TestGeneratedFileOperationalFailureUsesExitThree(t *testing.T) {
+	dir := t.TempDir()
+	parentFile := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(parentFile, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := filepath.Join(parentFile, "migration.sql")
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"migration", "install", "--output", outputPath}, h.dependencies()); code != 3 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+}
+
 func TestRunResolvesProjectsAndUsesStableExitCode(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, twoProjectConfig())
