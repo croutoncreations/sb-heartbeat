@@ -1,0 +1,61 @@
+begin;
+
+do $sb_heartbeat$
+begin
+  if to_regclass('public.sb_heartbeat') is null then
+    return;
+  end if;
+
+  if not exists (
+      select 1
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where c.oid = 'public.sb_heartbeat'::regclass
+        and n.nspname = 'public'
+        and c.relkind = 'r'
+        and obj_description(c.oid, 'pg_class') = 'sb-heartbeat:managed:v1'
+        and (
+          select count(*) from pg_attribute a
+          where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
+        ) = 2
+        and exists (
+          select 1 from pg_attribute a
+          where a.attrelid = c.oid and a.attname = 'id'
+            and a.atttypid = 'pg_catalog.bool'::regtype and a.attnotnull
+        )
+        and exists (
+          select 1 from pg_attribute a
+          where a.attrelid = c.oid and a.attname = 'created_at'
+            and a.atttypid = 'pg_catalog.timestamptz'::regtype and a.attnotnull
+            and exists (
+              select 1 from pg_attrdef d
+              where d.adrelid = a.attrelid and d.adnum = a.attnum
+            )
+        )
+        and exists (
+          select 1
+          from pg_constraint k
+          join pg_attribute a
+            on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
+          where k.conrelid = c.oid and k.contype = 'p'
+            and cardinality(k.conkey) = 1 and a.attname = 'id'
+        )
+        and exists (
+          select 1 from pg_constraint k
+          where k.conrelid = c.oid
+            and k.conname = 'sb_heartbeat_single_row'
+            and k.contype = 'c'
+            and lower(regexp_replace(
+              pg_get_expr(k.conbin, k.conrelid), '[[:space:]()]', '', 'g'
+            )) = 'idistrue'
+        )
+    ) then
+    raise exception
+      'refusing to remove non-SB Heartbeat object public.sb_heartbeat';
+  end if;
+
+  drop table public.sb_heartbeat;
+end
+$sb_heartbeat$;
+
+commit;

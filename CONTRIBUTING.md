@@ -11,3 +11,8 @@ SB Heartbeat uses test-driven development for behavior changes.
 Generated SQL and GitHub workflow changes need snapshot-style assertions and a
 manual review of the rendered artifact. Security changes should include hostile
 inputs, not only happy-path tests.
+
+Before release, also run the disposable PostgreSQL suite described in
+[`docs/releasing.md`](docs/releasing.md). The tag workflow repeats all normal,
+race, vet, golden, and PostgreSQL checks, then requires a dedicated hosted
+Supabase project before GoReleaser can publish.

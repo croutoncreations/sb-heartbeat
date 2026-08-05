@@ -1034,6 +1034,10 @@ and `service_role`.
 Integration secrets exist only in the CI secret store. Tests never target a
 production project and never print keys.
 
+The tag release workflow calls the complete reusable test workflow and requires
+the hosted Supabase integration job to pass before artifact publication. Missing
+integration secrets fail closed rather than skipping release verification.
+
 ## 19. Release and distribution
 
 Initial releases should provide GitHub release artifacts for macOS, Linux, and

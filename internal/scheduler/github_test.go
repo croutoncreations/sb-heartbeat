@@ -1,6 +1,8 @@
 package scheduler_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,6 +49,14 @@ func TestGitHubWorkflowIsPinnedAndChecksumVerified(t *testing.T) {
 	}
 	if strings.Contains(text, "curl | sh") || strings.Contains(text, "@v7") {
 		t.Errorf("workflow contains an unsafe floating installer/action\n%s", text)
+	}
+	goldenPath := filepath.Join("testdata", "github-workflow.yml.golden")
+	golden, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text != string(golden) {
+		t.Fatalf("generated workflow differs from %s", goldenPath)
 	}
 }
 

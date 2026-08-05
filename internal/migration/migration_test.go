@@ -1,8 +1,8 @@
 package migration_test
 
 import (
-	"crypto/sha256"
-	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,22 +47,23 @@ func TestUninstallRefusesUnownedObject(t *testing.T) {
 	}
 }
 
-func TestGeneratedSQLIsDeterministicAndTerminated(t *testing.T) {
-	tests := map[string]struct {
-		sql  string
-		hash string
-	}{
-		"install":   {migration.InstallSQL(), "8e014da925747719a787d7b5a51f67c4bd39d76a2d0ecfe52685360513809dc7"},
-		"uninstall": {migration.UninstallSQL(), "be5e483b3ee9cc02c8f8d622d6114493de0ffca5dfe27a555a66b00d59d3dc82"},
+func TestGeneratedSQLMatchesGoldenArtifacts(t *testing.T) {
+	tests := map[string]string{
+		"install":   migration.InstallSQL(),
+		"uninstall": migration.UninstallSQL(),
 	}
-	for name, tt := range tests {
+	for name, generated := range tests {
 		t.Run(name, func(t *testing.T) {
-			if tt.sql == "" || !strings.HasSuffix(tt.sql, "\n") || strings.Contains(tt.sql, "sb_heartbeat_is_valid_v1") {
+			if generated == "" || !strings.HasSuffix(generated, "\n") || strings.Contains(generated, "sb_heartbeat_is_valid_v1") {
 				t.Fatalf("invalid generated SQL")
 			}
-			got := fmt.Sprintf("%x", sha256.Sum256([]byte(tt.sql)))
-			if got != tt.hash {
-				t.Fatalf("golden hash changed: %s", got)
+			goldenPath := filepath.Join("testdata", name+".sql.golden")
+			golden, err := os.ReadFile(goldenPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if generated != string(golden) {
+				t.Fatalf("generated SQL differs from %s", goldenPath)
 			}
 		})
 	}

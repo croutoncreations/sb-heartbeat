@@ -96,6 +96,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Agent prompts](docs/agent-prompts.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Uninstall](docs/uninstall.md)
+- [Release verification](docs/releasing.md)
 - [Product specification](docs/product-spec.md)
 
 ## License
