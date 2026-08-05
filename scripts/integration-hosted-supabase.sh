@@ -23,8 +23,41 @@ fi
 binary="$1"
 psql_command=(psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet "${SB_HEARTBEAT_HOSTED_DATABASE_URL}")
 
-if [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select to_regclass('public.sb_heartbeat') is null;")" != "t" ]]; then
-  echo "Refusing to use a project that already contains public.sb_heartbeat; configure a dedicated disposable Supabase project for hosted release integration." >&2
+fixture_metadata_check="$("${psql_command[@]}" --tuples-only --no-align <<'SQL'
+select count(*) = 1 and bool_and(
+  obj_description(n.oid, 'pg_namespace') = 'sb-heartbeat:release-fixture:v1'
+  and c.relkind = 'r'
+  and obj_description(c.oid, 'pg_class') = 'sb-heartbeat:release-fixture:v1'
+  and (
+    select count(*) = 1
+      and bool_and(a.attname = 'marker' and a.atttypid = 'text'::regtype and a.attnotnull)
+    from pg_attribute a
+    where a.attrelid = c.oid
+      and a.attnum > 0
+      and not a.attisdropped
+  )
+  and (
+    select count(*) = 2 and bool_and(
+      (k.conname = 'sb_heartbeat_release_fixture_pkey' and k.contype = 'p')
+      or (k.conname = 'sb_heartbeat_release_fixture_value' and k.contype = 'c')
+    )
+    from pg_constraint k
+    where k.conrelid = c.oid
+  )
+)
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'sb_heartbeat_release'
+  and c.relname = 'fixture';
+SQL
+)"
+if [[ "${fixture_metadata_check}" != "t" ]]; then
+  echo "Refusing to use a project without the dedicated SB Heartbeat release fixture marker." >&2
+  exit 2
+fi
+fixture_row_check="$("${psql_command[@]}" --tuples-only --no-align --command "select count(*) = 1 and bool_and(marker = 'sb-heartbeat:release-fixture:v1') from sb_heartbeat_release.fixture;")"
+if [[ "${fixture_row_check}" != "t" ]]; then
+  echo "Refusing to use a project without the dedicated SB Heartbeat release fixture marker." >&2
   exit 2
 fi
 
@@ -32,11 +65,13 @@ temporary_directory="$(mktemp -d)"
 config_path="${temporary_directory}/sb-heartbeat.yaml"
 
 cleanup() {
-  "${binary}" migration uninstall | "${psql_command[@]}" >/dev/null 2>&1 || true
+  "${binary}" migration install | "${psql_command[@]}" >/dev/null 2>&1 || true
   rm -f "${config_path}" >/dev/null 2>&1 || true
   rmdir "${temporary_directory}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+"${binary}" migration uninstall | "${psql_command[@]}"
 
 "${binary}" init --non-interactive \
   --project-name hosted-release-test \
@@ -59,5 +94,8 @@ SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_ANON_KEY}" \
 
 "${binary}" migration uninstall | "${psql_command[@]}"
 [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select to_regclass('public.sb_heartbeat') is null;")" == "t" ]]
+"${binary}" migration install | "${psql_command[@]}"
+SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" \
+  "${binary}" --config "${config_path}" run --output json >/dev/null
 
 echo "Hosted Supabase integration: PASS"

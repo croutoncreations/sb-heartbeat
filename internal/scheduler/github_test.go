@@ -1,6 +1,7 @@
 package scheduler_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,19 +88,107 @@ func TestReleaseWorkflowUsesProtectedHostedEnvironment(t *testing.T) {
 	}
 }
 
-func TestHostedIntegrationRefusesPreExistingHeartbeatBeforeCleanup(t *testing.T) {
+func TestHostedIntegrationRequiresReleaseFixtureBeforeCleanupAndRestoresHeartbeat(t *testing.T) {
 	script, err := os.ReadFile(filepath.Join("..", "..", "scripts", "integration-hosted-supabase.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(script)
-	preflight := strings.Index(text, "select to_regclass('public.sb_heartbeat') is null")
+	preflight := strings.Index(text, "sb-heartbeat:release-fixture:v1")
 	cleanupTrap := strings.Index(text, "trap cleanup EXIT")
 	if preflight < 0 || cleanupTrap < 0 || preflight > cleanupTrap {
-		t.Fatalf("hosted integration must verify the heartbeat object is absent before enabling cleanup\n%s", text)
+		t.Fatalf("hosted integration must verify the exact release fixture before enabling cleanup\n%s", text)
 	}
-	if !strings.Contains(text, "dedicated disposable Supabase project") {
+	if !strings.Contains(text, "dedicated SB Heartbeat release fixture") {
 		t.Fatalf("hosted integration refusal must explain the dedicated-project requirement\n%s", text)
+	}
+	for _, fragment := range []string{
+		"pg_attribute",
+		"sb_heartbeat_release_fixture_pkey",
+		"sb_heartbeat_release_fixture_value",
+	} {
+		if !strings.Contains(text[:cleanupTrap], fragment) {
+			t.Fatalf("hosted integration fixture preflight does not validate %q\n%s", fragment, text[:cleanupTrap])
+		}
+	}
+	cleanup := text[strings.Index(text, "cleanup() {"):cleanupTrap]
+	if !strings.Contains(cleanup, `"${binary}" migration install`) {
+		t.Fatalf("hosted integration cleanup must restore the managed heartbeat table\n%s", cleanup)
+	}
+	if strings.Contains(cleanup, `"${binary}" migration uninstall`) {
+		t.Fatalf("hosted integration cleanup must not leave the fixture without a heartbeat table\n%s", cleanup)
+	}
+	finalRestore := strings.LastIndex(text, `"${binary}" migration install`)
+	postRestoreHeartbeat := strings.LastIndex(text, `SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}"`)
+	if finalRestore < cleanupTrap || postRestoreHeartbeat < finalRestore {
+		t.Fatalf("hosted integration must prove the restored heartbeat table is healthy\n%s", text)
+	}
+}
+
+func TestReleaseFixtureSetupAndScheduledHeartbeatAreSafe(t *testing.T) {
+	setup, err := os.ReadFile(filepath.Join("..", "..", "scripts", "release-fixture-install.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupText := string(setup)
+	for _, fragment := range []string{
+		"sb_heartbeat_release",
+		"sb-heartbeat:release-fixture:v1",
+		"comment on schema sb_heartbeat_release",
+		"revoke all on schema sb_heartbeat_release from public, anon, authenticated, service_role",
+		"revoke all on table sb_heartbeat_release.fixture from public, anon, authenticated, service_role",
+		"refusing to use non-SB Heartbeat schema sb_heartbeat_release",
+		"refusing to replace non-SB Heartbeat object sb_heartbeat_release.fixture",
+	} {
+		if !strings.Contains(setupText, fragment) {
+			t.Errorf("release fixture setup missing %q", fragment)
+		}
+	}
+
+	workflow, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release-fixture-heartbeat.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowText := string(workflow)
+	for _, fragment := range []string{
+		`cron: "37 3,11,19 * * *"`,
+		"workflow_dispatch:",
+		"if: vars.SB_HEARTBEAT_RELEASE_FIXTURE_ENABLED == 'true'",
+		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+		"SB_HEARTBEAT_VERSION: v0.1.0",
+		"sha256sum --check --strict",
+		"SB_HEARTBEAT_RELEASE_FIXTURE_URL: ${{ vars.SB_HEARTBEAT_RELEASE_FIXTURE_URL }}",
+		"SB_HEARTBEAT_RELEASE_FIXTURE_API_KEY: ${{ secrets.SB_HEARTBEAT_RELEASE_FIXTURE_API_KEY }}",
+		"sb-heartbeat --config release-fixture/sb-heartbeat.yaml run --output json",
+	} {
+		if !strings.Contains(workflowText, fragment) {
+			t.Errorf("release fixture workflow missing %q", fragment)
+		}
+	}
+	if strings.Contains(workflowText, "SB_HEARTBEAT_HOSTED_DATABASE_URL") {
+		t.Fatal("scheduled fixture heartbeat must not receive database credentials")
+	}
+
+	configFile, err := os.ReadFile(filepath.Join("..", "..", "release-fixture", "sb-heartbeat.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configText := string(configFile)
+	for _, fragment := range []string{
+		"env: SB_HEARTBEAT_RELEASE_FIXTURE_URL",
+		"env: SB_HEARTBEAT_RELEASE_FIXTURE_API_KEY",
+		`cron: "37 3,11,19 * * *"`,
+	} {
+		if !strings.Contains(configText, fragment) {
+			t.Errorf("release fixture config missing %q", fragment)
+		}
+	}
+	loadedConfig, err := config.Load(bytes.NewReader(configFile))
+	if err != nil {
+		t.Fatalf("release fixture configuration is invalid: %v", err)
+	}
+	if len(loadedConfig.Projects) != 1 || loadedConfig.Projects[0].Name != "sb-heartbeat-release-fixture" {
+		t.Fatalf("release fixture configuration loaded unexpected projects: %+v", loadedConfig.Projects)
 	}
 }
 

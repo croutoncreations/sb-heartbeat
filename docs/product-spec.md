@@ -1041,9 +1041,21 @@ Before release, use a dedicated disposable project to verify:
 - lack of mutation grants; and
 - uninstall behavior.
 
-The hosted integration must refuse to proceed when `public.sb_heartbeat`
-already exists before the test. This preflight occurs before cleanup is armed,
-so an accidentally shared downstream project fails without being modified.
+The dedicated project carries an exact `sb-heartbeat:release-fixture:v1` marker
+in the locked `sb_heartbeat_release` schema. The hosted integration must refuse
+to proceed unless that marker and its single expected row are present. This
+preflight occurs before cleanup is armed, so a development, production, or
+ordinary downstream heartbeat project fails without being modified.
+
+The release fixture runs the normal read-only heartbeat three times daily so it
+stays available between releases. That scheduled job receives only the hosted
+project URL and one low-privilege client key. Release validation may remove the
+managed `public.sb_heartbeat` table only after validating the separate fixture
+marker. It tests a fresh install, both supported client-key types, effective
+grants, and uninstall, then restores the managed heartbeat table. An exit trap
+also attempts restoration after every failure once the marker preflight has
+succeeded. This makes project creation and fixture marking one-time setup rather
+than a manual pause/resume task for each release.
 
 Migration tests also cover an unrelated same-name table, a view with the same
 name, a forged or missing ownership marker, malformed columns or constraints, a
@@ -1051,8 +1063,11 @@ valid rerun, a valid uninstall, and refusal to uninstall an unowned object.
 Effective table and column privileges are checked for `anon`, `authenticated`,
 and `service_role`.
 
-Integration secrets exist only in the CI secret store. Tests never target a
-production project and never print keys.
+Integration secrets exist only in the CI secret store. The database URL and
+both live-test keys are limited to the protected release environment. The
+scheduled heartbeat uses a repository variable for the project URL and a
+repository secret for its low-privilege key. Tests never target a production
+project and never print keys.
 
 The tag release workflow calls the complete reusable test workflow and requires
 the hosted Supabase integration job to pass before artifact publication. Missing

@@ -1,0 +1,18 @@
+version: 1
+
+defaults:
+  timeout: 10s
+  retries: 1
+  retry_backoff: 2s
+  concurrency: 4
+  output: text
+
+scheduler:
+  cron: "37 3,11,19 * * *"
+
+projects:
+  - name: sb-heartbeat-release-fixture
+    url:
+      env: SB_HEARTBEAT_RELEASE_FIXTURE_URL
+    api_key:
+      env: SB_HEARTBEAT_RELEASE_FIXTURE_API_KEY

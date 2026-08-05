@@ -17,8 +17,10 @@ fi
 binary="$1"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 psql_command=(psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet "${SB_HEARTBEAT_TEST_DATABASE_URL}")
+wrapper_directory="$(mktemp -d)"
+failure_binary="${wrapper_directory}/sb-heartbeat-fail-run"
 
-cleanup() {
+cleanup_database() {
   "${psql_command[@]}" >/dev/null 2>&1 <<'SQL' || true
 do $cleanup$
 declare
@@ -39,16 +41,35 @@ $cleanup$;
 drop role if exists anon;
 drop role if exists authenticated;
 drop role if exists service_role;
+drop schema if exists sb_heartbeat_release cascade;
 SQL
+}
+
+cleanup() {
+  cleanup_database
+  rm -f "${failure_binary}" >/dev/null 2>&1 || true
+  rmdir "${wrapper_directory}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-cleanup
+cleanup_database
 "${psql_command[@]}" <<'SQL'
 create role anon;
 create role authenticated;
 create role service_role;
 SQL
+
+cat >"${failure_binary}" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+for argument in "$@"; do
+  if [[ "${argument}" == "run" ]]; then
+    exit 42
+  fi
+done
+exec "${SB_HEARTBEAT_TEST_REAL_BINARY}" "$@"
+SH
+chmod +x "${failure_binary}"
 
 "${binary}" migration install | "${psql_command[@]}"
 "${binary}" migration install | "${psql_command[@]}"
@@ -83,8 +104,36 @@ hosted_preflight_output="$(
 hosted_preflight_status=$?
 set -e
 [[ "${hosted_preflight_status}" -eq 2 ]]
-[[ "${hosted_preflight_output}" == *"dedicated disposable Supabase project"* ]]
+[[ "${hosted_preflight_output}" == *"dedicated SB Heartbeat release fixture"* ]]
 [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select obj_description('public.sb_heartbeat'::regclass, 'pg_class');")" == "sb-heartbeat:managed:v1" ]]
+
+"${psql_command[@]}" --file "${script_directory}/release-fixture-install.sql"
+"${psql_command[@]}" --file "${script_directory}/release-fixture-install.sql"
+fixture_check="$("${psql_command[@]}" --tuples-only --no-align --command "select count(*) = 1 and bool_and(marker = 'sb-heartbeat:release-fixture:v1') from sb_heartbeat_release.fixture;")"
+fixture_grant_check="$("${psql_command[@]}" --tuples-only --no-align --command "select has_schema_privilege('anon','sb_heartbeat_release','usage'), has_schema_privilege('authenticated','sb_heartbeat_release','usage'), has_schema_privilege('service_role','sb_heartbeat_release','usage'), has_table_privilege('anon','sb_heartbeat_release.fixture','select'), has_table_privilege('authenticated','sb_heartbeat_release.fixture','select'), has_table_privilege('service_role','sb_heartbeat_release.fixture','select');")"
+[[ "${fixture_check}" == "t" ]]
+[[ "${fixture_grant_check}" == "f|f|f|f|f|f" ]]
+
+set +e
+SB_HEARTBEAT_TEST_REAL_BINARY="${binary}" \
+SB_HEARTBEAT_REQUIRE_HOSTED=1 \
+SB_HEARTBEAT_HOSTED_DATABASE_URL="${SB_HEARTBEAT_TEST_DATABASE_URL}" \
+SB_HEARTBEAT_HOSTED_URL="https://unused.invalid" \
+SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY="unused-publishable-fixture" \
+SB_HEARTBEAT_HOSTED_ANON_KEY="unused-anon-fixture" \
+  "${script_directory}/integration-hosted-supabase.sh" "${failure_binary}" >/dev/null 2>&1
+hosted_failure_status=$?
+set -e
+[[ "${hosted_failure_status}" -eq 42 ]]
+[[ "$("${psql_command[@]}" --tuples-only --no-align --command "select obj_description('public.sb_heartbeat'::regclass, 'pg_class');")" == "sb-heartbeat:managed:v1" ]]
+
+"${psql_command[@]}" --command "drop schema sb_heartbeat_release cascade; create schema sb_heartbeat_release; create table sb_heartbeat_release.fixture(note text); insert into sb_heartbeat_release.fixture values ('preserve-me');" >/dev/null
+if "${psql_command[@]}" --file "${script_directory}/release-fixture-install.sql" >/dev/null 2>&1; then
+  echo "release fixture install unexpectedly accepted an unrelated schema" >&2
+  exit 1
+fi
+[[ "$("${psql_command[@]}" --tuples-only --no-align --command "select note from sb_heartbeat_release.fixture;")" == "preserve-me" ]]
+"${psql_command[@]}" --command "drop schema sb_heartbeat_release cascade;" >/dev/null
 
 "${binary}" migration uninstall | "${psql_command[@]}"
 
