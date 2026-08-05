@@ -87,6 +87,22 @@ func TestReleaseWorkflowUsesProtectedHostedEnvironment(t *testing.T) {
 	}
 }
 
+func TestHostedIntegrationRefusesPreExistingHeartbeatBeforeCleanup(t *testing.T) {
+	script, err := os.ReadFile(filepath.Join("..", "..", "scripts", "integration-hosted-supabase.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+	preflight := strings.Index(text, "select to_regclass('public.sb_heartbeat') is null")
+	cleanupTrap := strings.Index(text, "trap cleanup EXIT")
+	if preflight < 0 || cleanupTrap < 0 || preflight > cleanupTrap {
+		t.Fatalf("hosted integration must verify the heartbeat object is absent before enabling cleanup\n%s", text)
+	}
+	if !strings.Contains(text, "dedicated disposable Supabase project") {
+		t.Fatalf("hosted integration refusal must explain the dedicated-project requirement\n%s", text)
+	}
+}
+
 func TestReleaseToolchainIncludesCurrentSecurityFix(t *testing.T) {
 	module, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
 	if err != nil {

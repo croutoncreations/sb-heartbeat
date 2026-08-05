@@ -319,6 +319,12 @@ func (a *app) initCommand() *cobra.Command {
 				if cron, err = prompt(reader, a.dependencies.Stdout, "Cron schedule", cron); err != nil {
 					return promptCommandError(err)
 				}
+				if migrationOutput == "" {
+					defaultMigrationOutput := filepath.Join(filepath.Dir(outputPath), "sb-heartbeat.sql")
+					if migrationOutput, err = prompt(reader, a.dependencies.Stdout, "Install migration output", defaultMigrationOutput); err != nil {
+						return promptCommandError(err)
+					}
+				}
 			} else {
 				urlEnv, keyEnv = derivedEnvironmentDefaults(projectName, urlEnv, keyEnv)
 				if projectName == "" {
@@ -388,6 +394,9 @@ func (a *app) initCommand() *cobra.Command {
 			if _, err := io.WriteString(a.dependencies.Stdout, githubBindingSummary(cfg.Projects)); err != nil {
 				return &commandError{stableCode: "internal_error", message: "files were created, but write GitHub binding guidance: " + err.Error()}
 			}
+			if _, err := io.WriteString(a.dependencies.Stdout, initNextSteps(migrationOutput)); err != nil {
+				return &commandError{stableCode: "internal_error", message: "files were created, but write next-step guidance: " + err.Error()}
+			}
 			return nil
 		},
 	}
@@ -404,6 +413,20 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&workflowConfig, "workflow-config", "", "repository-relative config path used by GitHub Actions (defaults to the generated config path)")
 	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag for generated automation")
 	return command
+}
+
+func initNextSteps(migrationOutput string) string {
+	var builder strings.Builder
+	builder.WriteString("Next steps:\n")
+	if migrationOutput != "" {
+		fmt.Fprintf(&builder, "  1. Review and apply %s through your normal migration process.\n", migrationOutput)
+	} else {
+		builder.WriteString("  1. Generate, review, and apply the install migration through your normal migration process.\n")
+	}
+	builder.WriteString("  2. Configure the printed URL variable and API-key secret.\n")
+	builder.WriteString("  3. Run sb-heartbeat doctor before running or enabling a scheduler.\n")
+	builder.WriteString("SB Heartbeat never applies migrations or stores database credentials.\n")
+	return builder.String()
 }
 
 func promptProject(reader *bufio.Reader, writer io.Writer, projectName, urlEnv, keyEnv string) (config.Project, error) {

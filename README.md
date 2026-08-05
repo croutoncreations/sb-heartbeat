@@ -34,6 +34,10 @@ sb-heartbeat doctor
 sb-heartbeat run
 ```
 
+Interactive `init` generates `sb-heartbeat.sql` beside the configuration by
+default and prints the same apply/configure/doctor sequence. It never connects
+to PostgreSQL or applies the migration itself.
+
 For a legacy anon JWT, put that value in the same API-key environment variable.
 SB Heartbeat identifies the form and sends the appropriate headers. Elevated keys
 are rejected before any network request. `--url-env` and `--api-key-env` can

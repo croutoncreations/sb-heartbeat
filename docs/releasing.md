@@ -16,7 +16,10 @@ project in the protected `hosted-supabase-release` environment:
 The database credential is used only to apply and remove the generated guarded
 migration and inspect effective grants. The two low-privilege keys each perform
 the fixed live heartbeat. Tests do not print values or response bodies. Missing
-inputs fail the release; they are never treated as a skip.
+inputs fail the release; they are never treated as a skip. The hosted integration
+also refuses to run if `public.sb_heartbeat` already exists before the test. Do
+not reuse a development, staging, production, or downstream heartbeat project:
+successful integration cleanup removes the table it created.
 
 To run the SQL suite locally, create an otherwise disposable PostgreSQL database
 whose cluster does not already contain the `anon`, `authenticated`, or

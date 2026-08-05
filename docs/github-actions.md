@@ -6,6 +6,11 @@ Generate the workflow from a versioned SB Heartbeat release:
 sb-heartbeat install github --sb-heartbeat-version v0.1.0
 ```
 
+Apply the generated install migration and run `sb-heartbeat doctor` successfully
+before enabling or manually dispatching the workflow. The scheduled workflow
+holds only a low-privilege client key; it cannot and must not create database
+objects.
+
 The default target is `.github/workflows/sb-heartbeat.yml`. Existing files are not
 replaced unless `--force` is explicit.
 

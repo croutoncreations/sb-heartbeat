@@ -83,6 +83,37 @@ func TestInteractiveInitPromptsOnlyForNonSecretMetadata(t *testing.T) {
 	}
 }
 
+func TestInteractiveInitGeneratesMigrationAndExplainsRequiredNextSteps(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "sb-heartbeat.yaml")
+	migrationPath := filepath.Join(dir, "sb-heartbeat.sql")
+	h := &harness{stdin: strings.NewReader("demo\n\n\n\n\n\n")}
+
+	code := cli.Execute(context.Background(), []string{"init", "--output-path", configPath}, h.dependencies())
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q, stdout = %q", code, h.stderr.String(), h.stdout.String())
+	}
+	migrationData, err := os.ReadFile(migrationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(migrationData), "sb-heartbeat:managed:v1") {
+		t.Fatalf("migration = %q", migrationData)
+	}
+	output := h.stdout.String()
+	for _, expected := range []string{
+		"Install migration output [" + migrationPath + "]",
+		"Next steps:",
+		"Review and apply " + migrationPath + " through your normal migration process.",
+		"Run sb-heartbeat doctor before running or enabling a scheduler.",
+		"SB Heartbeat never applies migrations or stores database credentials.",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("output missing %q: %q", expected, output)
+		}
+	}
+}
+
 func TestInteractiveInitSuggestsRepositoryNameAndExplainsBindings(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "My.App")
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {

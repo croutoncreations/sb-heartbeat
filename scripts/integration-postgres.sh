@@ -15,6 +15,7 @@ if [[ $# -ne 1 || ! -x "$1" ]]; then
 fi
 
 binary="$1"
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 psql_command=(psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet "${SB_HEARTBEAT_TEST_DATABASE_URL}")
 
 cleanup() {
@@ -69,6 +70,21 @@ if "${psql_command[@]}" --command "set role anon; insert into public.sb_heartbea
   echo "anon unexpectedly inserted" >&2
   exit 1
 fi
+
+set +e
+hosted_preflight_output="$(
+  SB_HEARTBEAT_REQUIRE_HOSTED=1 \
+  SB_HEARTBEAT_HOSTED_DATABASE_URL="${SB_HEARTBEAT_TEST_DATABASE_URL}" \
+  SB_HEARTBEAT_HOSTED_URL="https://unused.invalid" \
+  SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY="unused-publishable-fixture" \
+  SB_HEARTBEAT_HOSTED_ANON_KEY="unused-anon-fixture" \
+    "${script_directory}/integration-hosted-supabase.sh" "${binary}" 2>&1
+)"
+hosted_preflight_status=$?
+set -e
+[[ "${hosted_preflight_status}" -eq 2 ]]
+[[ "${hosted_preflight_output}" == *"dedicated disposable Supabase project"* ]]
+[[ "$("${psql_command[@]}" --tuples-only --no-align --command "select obj_description('public.sb_heartbeat'::regclass, 'pg_class');")" == "sb-heartbeat:managed:v1" ]]
 
 "${binary}" migration uninstall | "${psql_command[@]}"
 

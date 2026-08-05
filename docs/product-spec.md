@@ -635,6 +635,9 @@ MVP file-generation behavior is explicit:
   `--output PATH` is supplied.
 - `init --migration-output PATH` writes the install migration to that exact
   path; it does not invent a timestamped migration filename.
+- Interactive `init` suggests `sb-heartbeat.sql` beside the configuration and
+  generates it by default. It prints an explicit apply-migration, configure-
+  bindings, and `doctor` checklist, but never applies SQL.
 - `init --scheduler github` and `install github` target
   `.github/workflows/sb-heartbeat.yml`.
 - `--force` atomically replaces only the exact requested generated file. It
@@ -1037,6 +1040,10 @@ Before release, use a dedicated disposable project to verify:
 - read access to the fixed row;
 - lack of mutation grants; and
 - uninstall behavior.
+
+The hosted integration must refuse to proceed when `public.sb_heartbeat`
+already exists before the test. This preflight occurs before cleanup is armed,
+so an accidentally shared downstream project fails without being modified.
 
 Migration tests also cover an unrelated same-name table, a view with the same
 name, a forged or missing ownership marker, malformed columns or constraints, a

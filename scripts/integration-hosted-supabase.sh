@@ -21,9 +21,15 @@ if [[ $# -ne 1 || ! -x "$1" ]]; then
 fi
 
 binary="$1"
+psql_command=(psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet "${SB_HEARTBEAT_HOSTED_DATABASE_URL}")
+
+if [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select to_regclass('public.sb_heartbeat') is null;")" != "t" ]]; then
+  echo "Refusing to use a project that already contains public.sb_heartbeat; configure a dedicated disposable Supabase project for hosted release integration." >&2
+  exit 2
+fi
+
 temporary_directory="$(mktemp -d)"
 config_path="${temporary_directory}/sb-heartbeat.yaml"
-psql_command=(psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet "${SB_HEARTBEAT_HOSTED_DATABASE_URL}")
 
 cleanup() {
   "${binary}" migration uninstall | "${psql_command[@]}" >/dev/null 2>&1 || true
