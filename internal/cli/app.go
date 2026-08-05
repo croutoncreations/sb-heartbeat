@@ -54,6 +54,11 @@ type preflightProblem struct {
 	message string
 }
 
+type promptOutputError struct{ err error }
+
+func (e *promptOutputError) Error() string { return e.err.Error() }
+func (e *promptOutputError) Unwrap() error { return e.err }
+
 func Execute(ctx context.Context, args []string, dependencies Dependencies) int {
 	dependencies = withDefaults(dependencies)
 	a := &app{dependencies: dependencies}
@@ -289,32 +294,41 @@ func (a *app) initCommand() *cobra.Command {
 		Short: "Create a SB Heartbeat configuration",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			var projects []config.Project
 			if !nonInteractive {
 				reader := bufio.NewReader(a.dependencies.Stdin)
+				if projectName == "" {
+					projectName = suggestedRepositoryProjectName()
+				}
+				for {
+					project, err := promptProject(reader, a.dependencies.Stdout, projectName, urlEnv, keyEnv)
+					if err != nil {
+						return promptCommandError(err)
+					}
+					projects = append(projects, project)
+					more, err := promptYesNo(reader, a.dependencies.Stdout, "Add another Supabase project", false)
+					if err != nil {
+						return promptCommandError(err)
+					}
+					if !more {
+						break
+					}
+					projectName, urlEnv, keyEnv = "", "", ""
+				}
 				var err error
-				if projectName, err = prompt(reader, a.dependencies.Stdout, "Project name", projectName); err != nil {
-					return &commandError{stableCode: "missing_input", message: err.Error()}
-				}
-				urlEnv, keyEnv = derivedEnvironmentDefaults(projectName, urlEnv, keyEnv)
-				if urlEnv, err = prompt(reader, a.dependencies.Stdout, "Project URL environment variable", urlEnv); err != nil {
-					return &commandError{stableCode: "missing_input", message: err.Error()}
-				}
-				if keyEnv, err = prompt(reader, a.dependencies.Stdout, "API key environment variable", keyEnv); err != nil {
-					return &commandError{stableCode: "missing_input", message: err.Error()}
-				}
 				if cron, err = prompt(reader, a.dependencies.Stdout, "Cron schedule", cron); err != nil {
-					return &commandError{stableCode: "missing_input", message: err.Error()}
+					return promptCommandError(err)
 				}
+			} else {
+				urlEnv, keyEnv = derivedEnvironmentDefaults(projectName, urlEnv, keyEnv)
+				if projectName == "" {
+					return &commandError{stableCode: "missing_input", message: "project-name is required"}
+				}
+				projects = append(projects, config.Project{
+					Name: projectName, URL: config.EnvReference{Env: urlEnv}, APIKey: config.EnvReference{Env: keyEnv},
+				})
 			}
-			urlEnv, keyEnv = derivedEnvironmentDefaults(projectName, urlEnv, keyEnv)
-			if projectName == "" {
-				return &commandError{stableCode: "missing_input", message: "project-name is required"}
-			}
-			cfg, err := config.New(config.Project{
-				Name:   projectName,
-				URL:    config.EnvReference{Env: urlEnv},
-				APIKey: config.EnvReference{Env: keyEnv},
-			}, cron)
+			cfg, err := config.NewProjects(projects, cron)
 			if err != nil {
 				return &commandError{stableCode: "invalid_configuration", message: err.Error()}
 			}
@@ -371,6 +385,9 @@ func (a *app) initCommand() *cobra.Command {
 				}
 				fmt.Fprintln(a.dependencies.Stdout, "Created", workflowOutput)
 			}
+			if _, err := io.WriteString(a.dependencies.Stdout, githubBindingSummary(cfg.Projects)); err != nil {
+				return &commandError{stableCode: "internal_error", message: "files were created, but write GitHub binding guidance: " + err.Error()}
+			}
 			return nil
 		},
 	}
@@ -387,6 +404,92 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&workflowConfig, "workflow-config", "", "repository-relative config path used by GitHub Actions (defaults to the generated config path)")
 	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag for generated automation")
 	return command
+}
+
+func promptProject(reader *bufio.Reader, writer io.Writer, projectName, urlEnv, keyEnv string) (config.Project, error) {
+	var err error
+	if projectName, err = prompt(reader, writer, "Project name", projectName); err != nil {
+		return config.Project{}, err
+	}
+	urlEnv, keyEnv = derivedEnvironmentDefaults(projectName, urlEnv, keyEnv)
+	if _, err := fmt.Fprintf(writer, "Bindings for %s (press Enter to accept or type an existing name):\n", projectName); err != nil {
+		return config.Project{}, &promptOutputError{err: fmt.Errorf("write project binding guidance: %w", err)}
+	}
+	if _, err := fmt.Fprintln(writer, "  GitHub variable:", urlEnv); err != nil {
+		return config.Project{}, &promptOutputError{err: fmt.Errorf("write project URL binding guidance: %w", err)}
+	}
+	if _, err := fmt.Fprintln(writer, "  GitHub secret:", keyEnv); err != nil {
+		return config.Project{}, &promptOutputError{err: fmt.Errorf("write project API-key binding guidance: %w", err)}
+	}
+	if urlEnv, err = prompt(reader, writer, "Project URL environment variable", urlEnv); err != nil {
+		return config.Project{}, err
+	}
+	if keyEnv, err = prompt(reader, writer, "API key environment variable", keyEnv); err != nil {
+		return config.Project{}, err
+	}
+	return config.Project{
+		Name: projectName, URL: config.EnvReference{Env: urlEnv}, APIKey: config.EnvReference{Env: keyEnv},
+	}, nil
+}
+
+func promptCommandError(err error) *commandError {
+	var outputErr *promptOutputError
+	if errors.As(err, &outputErr) {
+		return &commandError{stableCode: "internal_error", message: err.Error()}
+	}
+	return &commandError{stableCode: "missing_input", message: err.Error()}
+}
+
+func githubBindingSummary(projects []config.Project) string {
+	var summary strings.Builder
+	summary.WriteString("\nGitHub repository bindings (values are not stored by SB Heartbeat):\n")
+	for _, project := range projects {
+		fmt.Fprintf(&summary, "%s:\n  GitHub variable: %s\n  GitHub secret: %s\n", project.Name, project.URL.Env, project.APIKey.Env)
+	}
+	return summary.String()
+}
+
+func suggestedRepositoryProjectName() string {
+	directory, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(directory, ".git")); err == nil {
+			return normalizeProjectSuggestion(filepath.Base(directory))
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			return ""
+		}
+		directory = parent
+	}
+}
+
+func normalizeProjectSuggestion(name string) string {
+	var normalized strings.Builder
+	previousSeparator := false
+	for _, character := range strings.ToLower(name) {
+		valid := character >= 'a' && character <= 'z' || character >= '0' && character <= '9'
+		if valid {
+			normalized.WriteRune(character)
+			previousSeparator = false
+		} else if !previousSeparator {
+			normalized.WriteByte('-')
+			previousSeparator = true
+		}
+	}
+	result := strings.Trim(normalized.String(), "-")
+	if result == "" {
+		return ""
+	}
+	if result[0] < 'a' || result[0] > 'z' {
+		result = "project-" + result
+	}
+	if len(result) > 63 {
+		result = strings.TrimRight(result[:63], "-")
+	}
+	return result
 }
 
 func derivedEnvironmentDefaults(projectName, urlEnv, keyEnv string) (string, string) {
@@ -496,9 +599,13 @@ func (a *app) installCommand() *cobra.Command {
 
 func prompt(reader *bufio.Reader, writer io.Writer, label, defaultValue string) (string, error) {
 	if defaultValue == "" {
-		fmt.Fprintf(writer, "%s: ", label)
+		if _, err := fmt.Fprintf(writer, "%s: ", label); err != nil {
+			return "", &promptOutputError{err: fmt.Errorf("write %s prompt: %w", strings.ToLower(label), err)}
+		}
 	} else {
-		fmt.Fprintf(writer, "%s [%s]: ", label, defaultValue)
+		if _, err := fmt.Fprintf(writer, "%s [%s]: ", label, defaultValue); err != nil {
+			return "", &promptOutputError{err: fmt.Errorf("write %s prompt: %w", strings.ToLower(label), err)}
+		}
 	}
 	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -512,6 +619,30 @@ func prompt(reader *bufio.Reader, writer io.Writer, label, defaultValue string) 
 		return "", fmt.Errorf("%s is required", strings.ToLower(label))
 	}
 	return value, nil
+}
+
+func promptYesNo(reader *bufio.Reader, writer io.Writer, label string, defaultValue bool) (bool, error) {
+	suffix := "[y/N]"
+	if defaultValue {
+		suffix = "[Y/n]"
+	}
+	if _, err := fmt.Fprintf(writer, "%s %s: ", label, suffix); err != nil {
+		return false, &promptOutputError{err: fmt.Errorf("write %s prompt: %w", strings.ToLower(label), err)}
+	}
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("read %s: %w", strings.ToLower(label), err)
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "":
+		return defaultValue, nil
+	case "y", "yes":
+		return true, nil
+	case "n", "no":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s must be yes or no", strings.ToLower(label))
+	}
 }
 
 func (a *app) migrationCommand() *cobra.Command {

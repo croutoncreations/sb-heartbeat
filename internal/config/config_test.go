@@ -97,6 +97,16 @@ projects:
 	}
 }
 
+func TestNewProjectsAppliesImplicitBindingsToEveryProject(t *testing.T) {
+	cfg, err := config.NewProjects([]config.Project{{Name: "first"}, {Name: "second-project"}}, "")
+	if err != nil {
+		t.Fatalf("NewProjects() error = %v", err)
+	}
+	if len(cfg.Projects) != 2 || cfg.Projects[1].APIKey.Env != "SB_HEARTBEAT_SECOND_PROJECT_API_KEY" {
+		t.Fatalf("projects = %+v", cfg.Projects)
+	}
+}
+
 func TestLoadRejectsCollidingImplicitEnvironmentBindings(t *testing.T) {
 	_, err := config.Load(strings.NewReader(`
 version: 1

@@ -20,6 +20,73 @@ For each configured project:
 - Create the URL environment name as a GitHub Actions variable.
 - Create the API-key environment name as a GitHub Actions secret.
 
+The interactive initializer prints these exact names. A project named `my-app`
+derives:
+
+```text
+GitHub variable: SB_HEARTBEAT_MY_APP_URL
+GitHub secret:   SB_HEARTBEAT_MY_APP_API_KEY
+```
+
+Existing repositories may already use names such as `SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_URL`, `VITE_SUPABASE_URL`, `SUPABASE_ANON_KEY`, or a
+project-specific publishable-key name. Those bindings might instead live in a
+hosting provider and not in GitHub. Inspect names without reading values:
+
+```bash
+gh variable list
+gh secret list
+```
+
+To reuse existing GitHub names, enter them when the wizard offers the derived
+defaults, or configure them explicitly:
+
+```yaml
+projects:
+  - name: my-app
+    url:
+      env: NEXT_PUBLIC_SUPABASE_URL
+    api_key:
+      env: SUPABASE_ANON_KEY
+```
+
+The generated workflow will then reference `vars.NEXT_PUBLIC_SUPABASE_URL` and
+`secrets.SUPABASE_ANON_KEY`. If an existing URL is stored as a secret rather
+than a variable, either create a repository variable for it or deliberately
+edit the generated workflow; the default generator keeps the mapping explicit
+and predictable.
+
+### Add bindings with GitHub CLI
+
+Repository URLs are not credentials and can be added as variables:
+
+```bash
+gh variable set SB_HEARTBEAT_MY_APP_URL \
+  --body 'https://your-project-ref.supabase.co'
+```
+
+Add the publishable or legacy anon key through the CLI's protected prompt so it
+does not appear in command history:
+
+```bash
+gh secret set SB_HEARTBEAT_MY_APP_API_KEY
+```
+
+Do not add a database connection URL, database password, secret key, or
+service-role key. Scheduled heartbeats need only the hosted project URL and one
+low-privilege client key.
+
+### Add bindings in the GitHub web interface
+
+1. Open the downstream repository on GitHub and select **Settings**.
+2. Select **Secrets and variables**, then **Actions**.
+3. On **Variables**, create the URL binding printed by SB Heartbeat.
+4. On **Secrets**, create the API-key binding printed by SB Heartbeat.
+5. Repeat the variable/secret pair for each configured Supabase project.
+
+The values belong in the downstream application repository, not in the SB
+Heartbeat development repository.
+
 The generated workflow checks out the default-branch configuration using a
 commit-pinned action, downloads one exact SB Heartbeat release, verifies the archive
 against `checksums.txt`, runs JSON checks, and writes the result to the job

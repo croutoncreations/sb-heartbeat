@@ -25,6 +25,17 @@ When `url.env` or `api_key.env` is omitted, SB Heartbeat derives
 name and changes hyphens to underscores. Explicit bindings take precedence,
 and configurations whose derived names collide are rejected.
 
+For example, project `my-app` derives:
+
+```text
+SB_HEARTBEAT_MY_APP_URL
+SB_HEARTBEAT_MY_APP_API_KEY
+```
+
+These are binding names, not credential values. In generated GitHub workflows,
+the URL name is read from `vars` and the API-key name is read from `secrets`.
+Explicit names can reuse existing repository bindings.
+
 Runtime ranges:
 
 | Setting | Default | Allowed |

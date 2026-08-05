@@ -83,6 +83,99 @@ func TestInteractiveInitPromptsOnlyForNonSecretMetadata(t *testing.T) {
 	}
 }
 
+func TestInteractiveInitSuggestsRepositoryNameAndExplainsBindings(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "My.App")
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
+	h := &harness{stdin: strings.NewReader("\n\n\n\n\n")}
+	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, h.dependencies())
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q, stdout = %q", code, h.stderr.String(), h.stdout.String())
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, loadErr := config.Load(file)
+	closeErr := file.Close()
+	if loadErr != nil || closeErr != nil {
+		t.Fatalf("load error = %v, close error = %v", loadErr, closeErr)
+	}
+	if cfg.Projects[0].Name != "my-app" {
+		t.Fatalf("project name = %q", cfg.Projects[0].Name)
+	}
+	output := h.stdout.String()
+	for _, expected := range []string{
+		"Project name [my-app]",
+		"GitHub variable: SB_HEARTBEAT_MY_APP_URL",
+		"GitHub secret: SB_HEARTBEAT_MY_APP_API_KEY",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("output missing %q: %q", expected, output)
+		}
+	}
+}
+
+func TestInteractiveInitCollectsMultipleProjects(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
+	h := &harness{stdin: strings.NewReader("first\n\n\ny\nsecond\n\n\nn\n\n")}
+	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, h.dependencies())
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q, stdout = %q", code, h.stderr.String(), h.stdout.String())
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, loadErr := config.Load(file)
+	closeErr := file.Close()
+	if loadErr != nil || closeErr != nil {
+		t.Fatalf("load error = %v, close error = %v", loadErr, closeErr)
+	}
+	if len(cfg.Projects) != 2 || cfg.Projects[0].Name != "first" || cfg.Projects[1].Name != "second" {
+		t.Fatalf("projects = %+v", cfg.Projects)
+	}
+	output := h.stdout.String()
+	for _, expected := range []string{
+		"GitHub variable: SB_HEARTBEAT_FIRST_URL",
+		"GitHub secret: SB_HEARTBEAT_FIRST_API_KEY",
+		"GitHub variable: SB_HEARTBEAT_SECOND_URL",
+		"GitHub secret: SB_HEARTBEAT_SECOND_API_KEY",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("output missing %q: %q", expected, output)
+		}
+	}
+}
+
+func TestInteractiveInitPromptWriteFailureCreatesNoFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
+	h := &harness{stdin: strings.NewReader("demo\n\n\nn\n\n")}
+	dependencies := h.dependencies()
+	dependencies.Stdout = failingWriter{}
+
+	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, dependencies)
+	if code != 3 {
+		t.Fatalf("code = %d, want 3; stderr = %q", code, h.stderr.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("configuration was created after prompt failure: %v", err)
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }

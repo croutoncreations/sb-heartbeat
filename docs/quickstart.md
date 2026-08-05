@@ -11,6 +11,9 @@ sb-heartbeat init \
 Interactive `sb-heartbeat init` asks for the same non-secret metadata. It never asks
 for an API-key value. Use `--url-env` and `--api-key-env` only to override the
 derived `SB_HEARTBEAT_DEMO_URL` and `SB_HEARTBEAT_DEMO_API_KEY` names.
+Inside a Git repository, the wizard suggests a normalized project label from
+the repository directory. It shows whether each derived binding belongs in a
+GitHub variable or secret and can collect additional Supabase projects.
 
 ## 2. Generate and apply SQL
 

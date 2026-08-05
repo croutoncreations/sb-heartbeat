@@ -50,6 +50,9 @@ sb-heartbeat install github --sb-heartbeat-version v0.1.0
 For each project, create the configured URL as a GitHub Actions variable and
 the API key as a GitHub Actions secret. The generated workflow runs at
 `37 3,11,19 * * *` by default and supports manual dispatch.
+Interactive initialization suggests the current repository name, displays the
+exact derived binding names, and can collect multiple projects. Existing
+GitHub binding names can be entered instead of the derived defaults.
 
 For a local scheduler, `sb-heartbeat install cron` prints a shell-safe suggested
 entry and the required environment-variable names. It never edits your crontab.

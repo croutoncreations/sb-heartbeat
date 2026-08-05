@@ -103,10 +103,17 @@ func Load(r io.Reader) (Config, error) {
 }
 
 func New(project Project, cron string) (Config, error) {
+	return NewProjects([]Project{project}, cron)
+}
+
+func NewProjects(projects []Project, cron string) (Config, error) {
 	if cron == "" {
 		cron = DefaultCron
 	}
-	project = withImplicitBindings(project)
+	configuredProjects := make([]Project, len(projects))
+	for i, project := range projects {
+		configuredProjects[i] = withImplicitBindings(project)
+	}
 	cfg := Config{
 		Version: 1,
 		Defaults: Defaults{
@@ -117,7 +124,7 @@ func New(project Project, cron string) (Config, error) {
 			Output:       DefaultOutput,
 		},
 		Scheduler: Scheduler{Cron: cron},
-		Projects:  []Project{project},
+		Projects:  configuredProjects,
 	}
 	return cfg, cfg.Validate()
 }

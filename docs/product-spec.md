@@ -601,6 +601,15 @@ Interactive setup gathers a project name, URL environment variable, API-key
 environment variable, and optional schedule. It creates configuration and can
 generate migration and GitHub workflow files.
 
+When initialization runs inside a Git repository, the interactive project-name
+prompt suggests a normalized form of the repository root directory name. The
+suggestion is only a local label and can be replaced. Interactive setup shows
+the exact derived URL and API-key environment names, labels their GitHub mapping
+as a repository variable and secret respectively, and allows either name to be
+overridden so an existing repository binding can be reused. Users can add more
+than one project before completing the wizard. Initialization does not query
+GitHub for secret values and never requests a key value.
+
 Noninteractive setup supports every essential choice:
 
 ```bash
