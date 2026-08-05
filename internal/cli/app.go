@@ -68,7 +68,10 @@ func Execute(ctx context.Context, args []string, dependencies Dependencies) int 
 			cmdErr = &commandError{stableCode: "invalid_invocation", message: err.Error()}
 		}
 		if a.outputMode == "json" {
-			_ = output.WriteFailureJSON(dependencies.Stdout, cmdErr.stableCode, cmdErr.message)
+			if writeErr := output.WriteFailureJSON(dependencies.Stdout, cmdErr.stableCode, cmdErr.message); writeErr != nil {
+				fmt.Fprintln(dependencies.Stderr, "Error: write JSON failure output:", writeErr)
+				return 3
+			}
 		} else {
 			fmt.Fprintln(dependencies.Stderr, "Error:", cmdErr.message)
 		}
@@ -162,6 +165,14 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 	if closeErr != nil {
 		return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
 	}
+	mode := a.outputMode
+	if mode == "" {
+		mode = cfg.Defaults.Output
+	}
+	if mode != "text" && mode != "json" {
+		return &commandError{stableCode: "invalid_invocation", message: "output must be text or json"}
+	}
+	a.outputMode = mode
 
 	configured := cfg.Projects
 	if selectedProject != "" {
@@ -189,14 +200,6 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		}
 		return &commandError{stableCode: stableCode, message: strings.Join(messages, "; ")}
 	}
-	mode := a.outputMode
-	if mode == "" {
-		mode = cfg.Defaults.Output
-	}
-	if mode != "text" && mode != "json" {
-		return &commandError{stableCode: "invalid_invocation", message: "output must be text or json"}
-	}
-
 	started := a.dependencies.Now()
 	results := a.dependencies.RunProjects(ctx, projects, cfg.Defaults)
 	finished := a.dependencies.Now()
@@ -292,6 +295,7 @@ func (a *app) initCommand() *cobra.Command {
 				if projectName, err = prompt(reader, a.dependencies.Stdout, "Project name", projectName); err != nil {
 					return &commandError{stableCode: "missing_input", message: err.Error()}
 				}
+				urlEnv, keyEnv = derivedEnvironmentDefaults(projectName, urlEnv, keyEnv)
 				if urlEnv, err = prompt(reader, a.dependencies.Stdout, "Project URL environment variable", urlEnv); err != nil {
 					return &commandError{stableCode: "missing_input", message: err.Error()}
 				}
@@ -302,8 +306,9 @@ func (a *app) initCommand() *cobra.Command {
 					return &commandError{stableCode: "missing_input", message: err.Error()}
 				}
 			}
-			if projectName == "" || urlEnv == "" || keyEnv == "" {
-				return &commandError{stableCode: "missing_input", message: "project-name, url-env, and api-key-env are required"}
+			urlEnv, keyEnv = derivedEnvironmentDefaults(projectName, urlEnv, keyEnv)
+			if projectName == "" {
+				return &commandError{stableCode: "missing_input", message: "project-name is required"}
 			}
 			cfg, err := config.New(config.Project{
 				Name:   projectName,
@@ -378,6 +383,17 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
 	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag for generated automation")
 	return command
+}
+
+func derivedEnvironmentDefaults(projectName, urlEnv, keyEnv string) (string, string) {
+	suggestedURL, suggestedKey := config.SuggestedEnvironmentNames(projectName)
+	if urlEnv == "" {
+		urlEnv = suggestedURL
+	}
+	if keyEnv == "" {
+		keyEnv = suggestedKey
+	}
+	return urlEnv, keyEnv
 }
 
 func (a *app) installCommand() *cobra.Command {

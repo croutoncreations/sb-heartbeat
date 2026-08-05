@@ -106,6 +106,7 @@ func New(project Project, cron string) (Config, error) {
 	if cron == "" {
 		cron = DefaultCron
 	}
+	project = withImplicitBindings(project)
 	cfg := Config{
 		Version: 1,
 		Defaults: Defaults{
@@ -191,12 +192,32 @@ func fromWire(w wireConfig) (Config, error) {
 		cfg.Scheduler.Cron = w.Scheduler.Cron
 	}
 	for _, p := range w.Projects {
-		cfg.Projects = append(cfg.Projects, Project(p))
+		cfg.Projects = append(cfg.Projects, withImplicitBindings(Project(p)))
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// SuggestedEnvironmentNames returns the deterministic implicit bindings for a
+// project. Hyphens and underscores intentionally normalize to the same token so
+// validation can reject ambiguous cross-project bindings.
+func SuggestedEnvironmentNames(projectName string) (urlEnv, apiKeyEnv string) {
+	normalized := strings.ToUpper(strings.ReplaceAll(projectName, "-", "_"))
+	prefix := "SB_HEARTBEAT_" + normalized
+	return prefix + "_URL", prefix + "_API_KEY"
+}
+
+func withImplicitBindings(project Project) Project {
+	urlEnv, apiKeyEnv := SuggestedEnvironmentNames(project.Name)
+	if project.URL.Env == "" {
+		project.URL.Env = urlEnv
+	}
+	if project.APIKey.Env == "" {
+		project.APIKey.Env = apiKeyEnv
+	}
+	return project
 }
 
 func (c Config) Validate() error {

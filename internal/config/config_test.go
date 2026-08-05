@@ -64,6 +64,51 @@ projects:
 	}
 }
 
+func TestLoadDerivesEnvironmentBindingsFromProjectName(t *testing.T) {
+	cfg, err := config.Load(strings.NewReader(`
+version: 1
+projects:
+  - name: my-stage
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Projects[0].URL.Env; got != "SB_HEARTBEAT_MY_STAGE_URL" {
+		t.Fatalf("URL env = %q", got)
+	}
+	if got := cfg.Projects[0].APIKey.Env; got != "SB_HEARTBEAT_MY_STAGE_API_KEY" {
+		t.Fatalf("API key env = %q", got)
+	}
+}
+
+func TestLoadPreservesExplicitEnvironmentBindings(t *testing.T) {
+	cfg, err := config.Load(strings.NewReader(`
+version: 1
+projects:
+  - name: demo
+    url: {env: CUSTOM_URL}
+    api_key: {env: CUSTOM_KEY}
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Projects[0].URL.Env != "CUSTOM_URL" || cfg.Projects[0].APIKey.Env != "CUSTOM_KEY" {
+		t.Fatalf("bindings = %+v", cfg.Projects[0])
+	}
+}
+
+func TestLoadRejectsCollidingImplicitEnvironmentBindings(t *testing.T) {
+	_, err := config.Load(strings.NewReader(`
+version: 1
+projects:
+  - name: a-b
+  - name: a_b
+`))
+	if err == nil || !strings.Contains(err.Error(), "duplicates") {
+		t.Fatalf("Load() error = %v, want duplicate binding rejection", err)
+	}
+}
+
 func TestLoadRejectsUnknownAndDuplicateKeys(t *testing.T) {
 	tests := map[string]string{
 		"unknown":   strings.Replace(validConfig, "version: 1", "version: 1\nmystery: true", 1),

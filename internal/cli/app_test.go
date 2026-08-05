@@ -101,6 +101,85 @@ func TestInternalOutputFailureUsesExitThree(t *testing.T) {
 	}
 }
 
+func TestConfiguredJSONModeAppliesToPreflightFailures(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, `
+version: 1
+defaults:
+  output: json
+projects:
+  - name: demo
+`)
+	h := &harness{env: map[string]string{}}
+
+	code := cli.Execute(context.Background(), []string{"--config", path, "run"}, h.dependencies())
+	if code != 2 || h.called {
+		t.Fatalf("code = %d, runner called = %v", code, h.called)
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(h.stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("stdout is not JSON: %v; stdout = %q, stderr = %q", err, h.stdout.String(), h.stderr.String())
+	}
+	if envelope.Error.Code != "missing_input" || h.stderr.Len() != 0 {
+		t.Fatalf("error code = %q, stderr = %q", envelope.Error.Code, h.stderr.String())
+	}
+}
+
+func TestConfiguredJSONModeAppliesToCredentialRejection(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, `
+version: 1
+defaults:
+  output: json
+projects:
+  - name: demo
+`)
+	rejectedKey := "sb_secret_review_fixture_not_a_real_key"
+	h := &harness{env: map[string]string{
+		"SB_HEARTBEAT_DEMO_URL":     "https://abcdefghijklmnopqrst.supabase.co",
+		"SB_HEARTBEAT_DEMO_API_KEY": rejectedKey,
+	}}
+
+	code := cli.Execute(context.Background(), []string{"--config", path, "run"}, h.dependencies())
+	if code != 2 || h.called {
+		t.Fatalf("code = %d, runner called = %v", code, h.called)
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(h.stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("stdout is not JSON: %v; %q", err, h.stdout.String())
+	}
+	if envelope.Error.Code != "credential_rejected" {
+		t.Fatalf("error code = %q", envelope.Error.Code)
+	}
+	if strings.Contains(h.stdout.String(), rejectedKey) || h.stderr.Len() != 0 {
+		t.Fatalf("credential leaked or stderr used: stdout = %q, stderr = %q", h.stdout.String(), h.stderr.String())
+	}
+}
+
+func TestFailureJSONWriteFailureUsesExitThree(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, `
+version: 1
+projects:
+  - name: demo
+`)
+	h := &harness{env: map[string]string{}}
+	deps := h.dependencies()
+	deps.Stdout = failingWriter{}
+
+	if code := cli.Execute(context.Background(), []string{"--config", path, "--output", "json", "run"}, deps); code != 3 {
+		t.Fatalf("code = %d, want 3; stderr = %q", code, h.stderr.String())
+	}
+}
+
 func TestRunnerResultCountMismatchUsesExitThree(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
@@ -318,6 +397,32 @@ func TestNonInteractiveInitWritesSafeConfigAndRefusesOverwrite(t *testing.T) {
 	h.stderr.Reset()
 	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
 		t.Fatalf("overwrite init code = %d", code)
+	}
+}
+
+func TestNonInteractiveInitUsesDerivedEnvironmentBindings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", path,
+		"--project-name", "my-stage",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("init code = %d, stderr = %q", code, h.stderr.String())
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, loadErr := config.Load(file)
+	closeErr := file.Close()
+	if loadErr != nil || closeErr != nil {
+		t.Fatalf("load error = %v, close error = %v", loadErr, closeErr)
+	}
+	project := cfg.Projects[0]
+	if project.URL.Env != "SB_HEARTBEAT_MY_STAGE_URL" || project.APIKey.Env != "SB_HEARTBEAT_MY_STAGE_API_KEY" {
+		t.Fatalf("project = %+v", project)
 	}
 }
 

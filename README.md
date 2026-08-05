@@ -21,16 +21,14 @@ go install github.com/jfox85/sb-heartbeat/cmd/sb-heartbeat@v0.1.0
 sb-heartbeat init \
   --non-interactive \
   --project-name my-staging-project \
-  --url-env MY_STAGING_SUPABASE_URL \
-  --api-key-env MY_STAGING_SUPABASE_API_KEY \
   --migration-output supabase/migrations/20260804_sb-heartbeat.sql
 ```
 
 Review and apply the generated SQL through your normal migration process, then:
 
 ```bash
-export MY_STAGING_SUPABASE_URL=https://your-project-ref.supabase.co
-export MY_STAGING_SUPABASE_API_KEY=sb_publishable_your_key
+export SB_HEARTBEAT_MY_STAGING_PROJECT_URL=https://your-project-ref.supabase.co
+export SB_HEARTBEAT_MY_STAGING_PROJECT_API_KEY=sb_publishable_your_key
 
 sb-heartbeat doctor
 sb-heartbeat run
@@ -38,7 +36,8 @@ sb-heartbeat run
 
 For a legacy anon JWT, put that value in the same API-key environment variable.
 SB Heartbeat identifies the form and sends the appropriate headers. Elevated keys
-are rejected before any network request.
+are rejected before any network request. `--url-env` and `--api-key-env` can
+override the environment names derived from the project name.
 
 ## GitHub Actions
 

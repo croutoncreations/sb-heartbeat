@@ -5,13 +5,12 @@
 ```bash
 sb-heartbeat init \
   --non-interactive \
-  --project-name demo \
-  --url-env DEMO_SUPABASE_URL \
-  --api-key-env DEMO_SUPABASE_API_KEY
+  --project-name demo
 ```
 
 Interactive `sb-heartbeat init` asks for the same non-secret metadata. It never asks
-for an API-key value.
+for an API-key value. Use `--url-env` and `--api-key-env` only to override the
+derived `SB_HEARTBEAT_DEMO_URL` and `SB_HEARTBEAT_DEMO_API_KEY` names.
 
 ## 2. Generate and apply SQL
 
@@ -25,8 +24,8 @@ process. SB Heartbeat deliberately has no command that applies SQL.
 ## 3. Set runtime values
 
 ```bash
-export DEMO_SUPABASE_URL=https://your-project-ref.supabase.co
-export DEMO_SUPABASE_API_KEY=sb_publishable_your_key
+export SB_HEARTBEAT_DEMO_URL=https://your-project-ref.supabase.co
+export SB_HEARTBEAT_DEMO_API_KEY=sb_publishable_your_key
 ```
 
 A legacy anon JWT works too. Do not use a secret or service-role key.

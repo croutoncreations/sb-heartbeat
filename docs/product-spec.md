@@ -483,6 +483,7 @@ Configuration requirements:
 - Explicit environment variable names match `[A-Z_][A-Z0-9_]{0,126}`.
 - Suggested environment names normalize hyphens to underscores. Initialization
   rejects collisions after normalization, such as `a-b` and `a_b`.
+- Omitted `url.env` and `api_key.env` bindings use the suggested names below.
 - Durations and retry counts are bounded.
 - A published JSON Schema is planned for 1.0 and may be added earlier if cheap.
 
@@ -611,6 +612,9 @@ sb-heartbeat init \
   --scheduler github \
   --cron "37 3,11,19 * * *"
 ```
+
+The `--url-env` and `--api-key-env` flags override the implicit names derived
+from the project name; they are optional when those defaults are suitable.
 
 Initialization works outside Git repositories. Repository-specific generation
 is enabled only when applicable.

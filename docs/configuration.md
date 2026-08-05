@@ -15,14 +15,15 @@ scheduler:
   cron: 37 3,11,19 * * *
 projects:
   - name: demo
-    url:
-      env: DEMO_SUPABASE_URL
-    api_key:
-      env: DEMO_SUPABASE_API_KEY
 ```
 
 Configuration is strict: unknown and duplicate YAML keys are rejected. The MVP
 has no custom query fields; every request targets the guarded heartbeat table.
+When `url.env` or `api_key.env` is omitted, SB Heartbeat derives
+`SB_HEARTBEAT_<NORMALIZED_NAME>_URL` and
+`SB_HEARTBEAT_<NORMALIZED_NAME>_API_KEY`. Normalization uppercases the project
+name and changes hyphens to underscores. Explicit bindings take precedence,
+and configurations whose derived names collide are rejected.
 
 Runtime ranges:
 
