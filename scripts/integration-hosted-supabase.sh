@@ -71,6 +71,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
+wait_for_restored_heartbeat() {
+  local attempt
+  local last_output=""
+  for attempt in 1 2 3 4 5 6; do
+    if last_output="$(
+      SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" \
+        "${binary}" --config "${config_path}" run --output text 2>&1
+    )"; then
+      return 0
+    fi
+    if [[ "${attempt}" != "6" ]]; then
+      echo "Hosted integration: waiting for the restored heartbeat table (${attempt}/6)" >&2
+      sleep 2
+    fi
+  done
+  echo "Hosted integration: restored heartbeat table did not become healthy" >&2
+  printf '%s\n' "${last_output}" >&2
+  return 1
+}
+
 "${binary}" migration uninstall | "${psql_command[@]}"
 
 "${binary}" init --non-interactive \
@@ -95,7 +115,6 @@ SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_ANON_KEY}" \
 "${binary}" migration uninstall | "${psql_command[@]}"
 [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select to_regclass('public.sb_heartbeat') is null;")" == "t" ]]
 "${binary}" migration install | "${psql_command[@]}"
-SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" \
-  "${binary}" --config "${config_path}" run --output json >/dev/null
+wait_for_restored_heartbeat
 
 echo "Hosted Supabase integration: PASS"

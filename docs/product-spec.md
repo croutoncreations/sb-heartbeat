@@ -1054,8 +1054,11 @@ managed `public.sb_heartbeat` table only after validating the separate fixture
 marker. It tests a fresh install, both supported client-key types, effective
 grants, and uninstall, then restores the managed heartbeat table. An exit trap
 also attempts restoration after every failure once the marker preflight has
-succeeded. This makes project creation and fixture marking one-time setup rather
-than a manual pause/resume task for each release.
+succeeded. Because hosted PostgREST schema visibility can briefly lag behind a
+database migration, the final live restoration check uses a bounded retry and
+prints a stable diagnostic if the table never becomes healthy. This makes
+project creation and fixture marking one-time setup rather than a manual
+pause/resume task for each release.
 
 Migration tests also cover an unrelated same-name table, a view with the same
 name, a forged or missing ownership marker, malformed columns or constraints, a

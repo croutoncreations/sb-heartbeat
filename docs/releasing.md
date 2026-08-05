@@ -82,8 +82,10 @@ best-effort, so failed or disabled scheduled runs must still be monitored.
 
 Release validation verifies the private fixture marker before arming cleanup,
 temporarily removes the managed heartbeat table, tests a clean install and
-uninstall, and restores the table on success or failure. No manual clearing,
-project resumption, or post-release repair is part of the normal release flow.
+uninstall, and restores the table on success or failure. Its final live check
+waits for bounded PostgREST schema-cache propagation before failing with a
+diagnostic. No manual clearing, project resumption, or post-release repair is
+part of the normal release flow.
 
 To run the SQL suite locally, create an otherwise disposable PostgreSQL database
 whose cluster does not already contain the `anon`, `authenticated`, or

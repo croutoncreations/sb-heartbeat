@@ -19,6 +19,7 @@ script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 psql_command=(psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet "${SB_HEARTBEAT_TEST_DATABASE_URL}")
 wrapper_directory="$(mktemp -d)"
 failure_binary="${wrapper_directory}/sb-heartbeat-fail-run"
+run_count_file="${wrapper_directory}/run-count"
 
 cleanup_database() {
   "${psql_command[@]}" >/dev/null 2>&1 <<'SQL' || true
@@ -48,6 +49,7 @@ SQL
 cleanup() {
   cleanup_database
   rm -f "${failure_binary}" >/dev/null 2>&1 || true
+  rm -f "${run_count_file}" >/dev/null 2>&1 || true
   rmdir "${wrapper_directory}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -64,7 +66,22 @@ cat >"${failure_binary}" <<'SH'
 set -euo pipefail
 for argument in "$@"; do
   if [[ "${argument}" == "run" ]]; then
-    exit 42
+    if [[ "${SB_HEARTBEAT_TEST_RUN_MODE}" == "fail" ]]; then
+      exit 42
+    fi
+    run_count=0
+    if [[ -f "${SB_HEARTBEAT_TEST_RUN_COUNT_FILE}" ]]; then
+      run_count="$(<"${SB_HEARTBEAT_TEST_RUN_COUNT_FILE}")"
+    fi
+    run_count=$((run_count + 1))
+    printf '%s\n' "${run_count}" >"${SB_HEARTBEAT_TEST_RUN_COUNT_FILE}"
+    if [[ "${run_count}" -le 4 ]]; then
+      if [[ "${run_count}" -le 2 ]]; then
+        exit 0
+      fi
+      exit 1
+    fi
+    exit 0
   fi
 done
 exec "${SB_HEARTBEAT_TEST_REAL_BINARY}" "$@"
@@ -116,6 +133,8 @@ fixture_grant_check="$("${psql_command[@]}" --tuples-only --no-align --command "
 
 set +e
 SB_HEARTBEAT_TEST_REAL_BINARY="${binary}" \
+SB_HEARTBEAT_TEST_RUN_MODE="fail" \
+SB_HEARTBEAT_TEST_RUN_COUNT_FILE="${run_count_file}" \
 SB_HEARTBEAT_REQUIRE_HOSTED=1 \
 SB_HEARTBEAT_HOSTED_DATABASE_URL="${SB_HEARTBEAT_TEST_DATABASE_URL}" \
 SB_HEARTBEAT_HOSTED_URL="https://unused.invalid" \
@@ -125,6 +144,22 @@ SB_HEARTBEAT_HOSTED_ANON_KEY="unused-anon-fixture" \
 hosted_failure_status=$?
 set -e
 [[ "${hosted_failure_status}" -eq 42 ]]
+[[ "$("${psql_command[@]}" --tuples-only --no-align --command "select obj_description('public.sb_heartbeat'::regclass, 'pg_class');")" == "sb-heartbeat:managed:v1" ]]
+
+hosted_retry_output="$(
+  SB_HEARTBEAT_TEST_REAL_BINARY="${binary}" \
+  SB_HEARTBEAT_TEST_RUN_MODE="delayed" \
+  SB_HEARTBEAT_TEST_RUN_COUNT_FILE="${run_count_file}" \
+  SB_HEARTBEAT_REQUIRE_HOSTED=1 \
+  SB_HEARTBEAT_HOSTED_DATABASE_URL="${SB_HEARTBEAT_TEST_DATABASE_URL}" \
+  SB_HEARTBEAT_HOSTED_URL="https://unused.invalid" \
+  SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY="unused-publishable-fixture" \
+  SB_HEARTBEAT_HOSTED_ANON_KEY="unused-anon-fixture" \
+    "${script_directory}/integration-hosted-supabase.sh" "${failure_binary}" 2>&1
+)"
+[[ "${hosted_retry_output}" == *"waiting for the restored heartbeat table"* ]]
+[[ "${hosted_retry_output}" == *"Hosted Supabase integration: PASS"* ]]
+[[ "$(<"${run_count_file}")" -eq 5 ]]
 [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select obj_description('public.sb_heartbeat'::regclass, 'pg_class');")" == "sb-heartbeat:managed:v1" ]]
 
 "${psql_command[@]}" --command "drop schema sb_heartbeat_release cascade; create schema sb_heartbeat_release; create table sb_heartbeat_release.fixture(note text); insert into sb_heartbeat_release.fixture values ('preserve-me');" >/dev/null
