@@ -86,6 +86,16 @@ func TestReleaseWorkflowUsesProtectedHostedEnvironment(t *testing.T) {
 	}
 }
 
+func TestReleaseToolchainIncludesCurrentSecurityFix(t *testing.T) {
+	module, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(module), "toolchain go1.26.5\n") {
+		t.Fatalf("go.mod must select Go 1.26.5 or a deliberately reviewed successor")
+	}
+}
+
 func TestGitHubWorkflowRejectsDevelopmentOrInvalidVersion(t *testing.T) {
 	for _, version := range []string{"", "devel", "v0.1.0-dev", "latest", "v1; echo bad"} {
 		if _, err := scheduler.GitHub(workflowConfig(t), version, "sb-heartbeat.yaml"); err == nil {

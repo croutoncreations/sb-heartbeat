@@ -2,6 +2,8 @@ module github.com/jfox85/sb-heartbeat
 
 go 1.24
 
+toolchain go1.26.5
+
 require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
