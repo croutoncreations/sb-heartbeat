@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/jfox85/supawake/internal/heartbeat"
+	"github.com/jfox85/sb-heartbeat/internal/heartbeat"
 )
 
 const SchemaVersion = 1

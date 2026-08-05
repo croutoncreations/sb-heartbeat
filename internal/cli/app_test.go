@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfox85/supawake/internal/cli"
-	"github.com/jfox85/supawake/internal/config"
-	"github.com/jfox85/supawake/internal/heartbeat"
+	"github.com/jfox85/sb-heartbeat/internal/cli"
+	"github.com/jfox85/sb-heartbeat/internal/config"
+	"github.com/jfox85/sb-heartbeat/internal/heartbeat"
 )
 
 type harness struct {
@@ -56,7 +56,7 @@ func (h *harness) dependencies() cli.Dependencies {
 
 func TestInteractiveInitPromptsOnlyForNonSecretMetadata(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "supawake.yaml")
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
 	h := &harness{stdin: strings.NewReader("demo\nDEMO_URL\nDEMO_KEY\n\n")}
 	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, h.dependencies())
 	if code != 0 {
@@ -108,7 +108,7 @@ func TestRunnerResultCountMismatchUsesExitThree(t *testing.T) {
 
 func writeConfig(t *testing.T, dir, body string) string {
 	t.Helper()
-	path := filepath.Join(dir, "supawake.yaml")
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestDoctorExplainsPermissionAmbiguity(t *testing.T) {
 
 func TestNonInteractiveInitWritesSafeConfigAndRefusesOverwrite(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "supawake.yaml")
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
 	h := &harness{}
 	args := []string{
 		"init", "--non-interactive", "--output-path", path,
@@ -245,7 +245,7 @@ func TestNonInteractiveInitWritesSafeConfigAndRefusesOverwrite(t *testing.T) {
 
 func TestMigrationCommandsPrintOrWrite(t *testing.T) {
 	h := &harness{}
-	if code := cli.Execute(context.Background(), []string{"migration", "install"}, h.dependencies()); code != 0 || !strings.Contains(h.stdout.String(), "supawake:heartbeat:v1") {
+	if code := cli.Execute(context.Background(), []string{"migration", "install"}, h.dependencies()); code != 0 || !strings.Contains(h.stdout.String(), "sb-heartbeat:managed:v1") {
 		t.Fatalf("code = %d, output = %q", code, h.stdout.String())
 	}
 
@@ -256,7 +256,67 @@ func TestMigrationCommandsPrintOrWrite(t *testing.T) {
 		t.Fatalf("code = %d", code)
 	}
 	data, err := os.ReadFile(path)
-	if err != nil || !strings.Contains(string(data), "refusing to remove non-Supawake object") {
+	if err != nil || !strings.Contains(string(data), "refusing to remove non-SB Heartbeat object") {
 		t.Fatalf("file = %q, err = %v", data, err)
+	}
+}
+
+func TestInstallGitHubGeneratesWorkflowAndRefusesOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	workflow := filepath.Join(dir, ".github", "workflows", "sb-heartbeat.yml")
+	h := &harness{}
+	args := []string{"--config", path, "install", "github", "--sb-heartbeat-version", "v0.1.0", "--output-path", workflow}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	data, err := os.ReadFile(workflow)
+	if err != nil || !strings.Contains(string(data), "sha256sum --check --strict") {
+		t.Fatalf("workflow = %q, err = %v", data, err)
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("overwrite code = %d", code)
+	}
+}
+
+func TestInitGitHubPreflightsAllTargets(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "sb-heartbeat.yaml")
+	workflow := filepath.Join(dir, ".github", "workflows", "sb-heartbeat.yml")
+	if err := os.MkdirAll(filepath.Dir(workflow), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflow, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", configPath,
+		"--project-name", "demo", "--url-env", "DEMO_URL", "--api-key-env", "DEMO_KEY",
+		"--scheduler", "github", "--workflow-output", workflow, "--sb-heartbeat-version", "v0.1.0",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d", code)
+	}
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("configuration was written despite workflow collision: %v", err)
+	}
+}
+
+func TestInitGitHubRejectsSameOutputTarget(t *testing.T) {
+	dir := t.TempDir()
+	sharedPath := filepath.Join(dir, "sb-heartbeat.yaml")
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", sharedPath,
+		"--project-name", "demo", "--url-env", "DEMO_URL", "--api-key-env", "DEMO_KEY",
+		"--scheduler", "github", "--workflow-output", filepath.Join(dir, ".", "sb-heartbeat.yaml"),
+		"--sb-heartbeat-version", "v0.1.0",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d", code)
+	}
+	if _, err := os.Stat(sharedPath); !os.IsNotExist(err) {
+		t.Fatalf("shared output was written: %v", err)
 	}
 }

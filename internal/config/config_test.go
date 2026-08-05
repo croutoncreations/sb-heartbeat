@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfox85/supawake/internal/config"
+	"github.com/jfox85/sb-heartbeat/internal/config"
 )
 
 const validConfig = `
@@ -86,6 +86,8 @@ func TestLoadRejectsInvalidNamesBindingsAndBounds(t *testing.T) {
 		"timeout":           strings.Replace(validConfig, "timeout: 10s", "timeout: 61s", 1),
 		"retries":           strings.Replace(validConfig, "retries: 1", "retries: 4", 1),
 		"concurrency":       strings.Replace(validConfig, "concurrency: 4", "concurrency: 17", 1),
+		"cron":              strings.Replace(validConfig, `cron: "37 3,11,19 * * *"`, `cron: "not a cron"`, 1),
+		"cron descriptor":   strings.Replace(validConfig, `cron: "37 3,11,19 * * *"`, `cron: "@daily"`, 1),
 	}
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {

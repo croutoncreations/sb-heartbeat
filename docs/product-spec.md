@@ -1,4 +1,4 @@
-# Supawake — Product Specification and Implementation Plan
+# SB Heartbeat — Product Specification and Implementation Plan
 
 Status: Draft for implementation  
 Specification version: 0.3  
@@ -6,7 +6,7 @@ Last updated: 2026-08-04
 
 ## 1. Product summary
 
-Supawake is a small, open-source Go CLI that helps users keep intentionally
+SB Heartbeat is a small, open-source Go CLI that helps users keep intentionally
 retained, low-traffic Supabase projects active by periodically executing
 legitimate, read-only database activity.
 
@@ -20,12 +20,13 @@ The product emphasizes:
 - agent-friendly setup and documentation; and
 - no hosted credential custody.
 
-Supawake is not a hosted service. Users run it through infrastructure they
+SB Heartbeat is not a hosted service. Users run it through infrastructure they
 already control, initially GitHub Actions or a local scheduler. Cloudflare
 Workers, Docker, and additional schedulers remain planned 1.0 targets.
 
-Working name: **Supawake**. The final name remains subject to repository,
-package, and trademark checks.
+Product name: **SB Heartbeat**. The repository and package name are
+`sb-heartbeat`; PostgreSQL objects use the identifier-safe `sb_heartbeat`
+prefix. A formal trademark check remains a release prerequisite.
 
 ## 2. Problem
 
@@ -56,7 +57,7 @@ low-privilege Supabase client key against a dedicated one-row heartbeat table.
 The table is protected by explicit PostgreSQL grants and a narrow Row Level
 Security policy.
 
-Supawake's differentiator is not the HTTP request alone. It is the complete
+SB Heartbeat's differentiator is not the HTTP request alone. It is the complete
 operational experience:
 
 - generate an auditable least-privilege migration;
@@ -77,7 +78,7 @@ particular request forever or that a project can never be paused.
    revokes broad access and grants only the access the heartbeat needs.
 3. **Low-privilege keys only.** Both publishable and legacy anon keys are
    supported. Secret and service-role keys are rejected.
-4. **User-owned execution.** Supawake does not host checks or retain keys.
+4. **User-owned execution.** SB Heartbeat does not host checks or retain keys.
 5. **Safe automation.** Results are deterministic, secrets are redacted, and
    exit codes remain consistent for single- and multi-project runs.
 6. **Strict inputs.** Configuration, URLs, queries, and responses are parsed
@@ -161,8 +162,8 @@ system and needs a portable binary with predictable output.
 
 Core stories:
 
-- Initialize Supawake in an existing repository or standalone directory.
-- Generate SQL without handing Supawake database credentials.
+- Initialize SB Heartbeat in an existing repository or standalone directory.
+- Generate SQL without handing SB Heartbeat database credentials.
 - Apply the SQL separately and verify the resulting heartbeat.
 - Reference a publishable or anon key through an environment variable.
 - Check all projects or one named project.
@@ -177,8 +178,8 @@ Core stories:
 ### 8.1 Database object
 
 The generated installation migration must be explicit, repeatable, and fail
-closed if its object name is already in use. Supawake marks its table with the
-exact comment `supawake:heartbeat:v1`. A rerun proceeds only when the existing
+closed if its object name is already in use. SB Heartbeat marks its table with the
+exact comment `sb-heartbeat:managed:v1`. A rerun proceeds only when the existing
 object is an ordinary table with that marker and the expected v1 columns,
 primary key, and single-row check constraint. Otherwise the migration raises an
 exception before changing grants, policies, data, or RLS state.
@@ -187,26 +188,26 @@ The normative migration follows this structure; the generated version contains
 the complete catalog checks rather than treating this example as pseudocode:
 
 ```sql
-do $supawake$
+do $sb_heartbeat$
 begin
-  if to_regclass('public.supawake_heartbeat') is null then
-    create table public.supawake_heartbeat (
+  if to_regclass('public.sb_heartbeat') is null then
+    create table public.sb_heartbeat (
       id boolean primary key,
       created_at timestamptz not null default now(),
-      constraint supawake_heartbeat_single_row check (id is true)
+      constraint sb_heartbeat_single_row check (id is true)
     );
 
-    comment on table public.supawake_heartbeat
-      is 'supawake:heartbeat:v1';
+    comment on table public.sb_heartbeat
+      is 'sb-heartbeat:managed:v1';
   else
     if not exists (
       select 1
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
-      where c.oid = 'public.supawake_heartbeat'::regclass
+      where c.oid = 'public.sb_heartbeat'::regclass
         and n.nspname = 'public'
         and c.relkind = 'r'
-        and obj_description(c.oid, 'pg_class') = 'supawake:heartbeat:v1'
+        and obj_description(c.oid, 'pg_class') = 'sb-heartbeat:managed:v1'
         and (
           select count(*)
           from pg_attribute a
@@ -237,7 +238,7 @@ begin
         and exists (
           select 1 from pg_constraint k
           where k.conrelid = c.oid
-            and k.conname = 'supawake_heartbeat_single_row'
+            and k.conname = 'sb_heartbeat_single_row'
             and k.contype = 'c'
             and lower(regexp_replace(
               pg_get_expr(k.conbin, k.conrelid), '[[:space:]()]', '', 'g'
@@ -245,30 +246,30 @@ begin
         )
     ) then
       raise exception
-        'public.supawake_heartbeat exists but is not a valid Supawake v1 table';
+        'public.sb_heartbeat exists but is not a valid SB Heartbeat v1 table';
     end if;
   end if;
 end
-$supawake$;
+$sb_heartbeat$;
 
-insert into public.supawake_heartbeat (id)
+insert into public.sb_heartbeat (id)
 values (true)
 on conflict (id) do nothing;
 
-alter table public.supawake_heartbeat enable row level security;
+alter table public.sb_heartbeat enable row level security;
 
-revoke all on table public.supawake_heartbeat
+revoke all on table public.sb_heartbeat
 from public, anon, authenticated, service_role;
 
 grant select (id)
-on table public.supawake_heartbeat
+on table public.sb_heartbeat
 to anon;
 
-drop policy if exists "supawake_read_heartbeat"
-on public.supawake_heartbeat;
+drop policy if exists "sb_heartbeat_read"
+on public.sb_heartbeat;
 
-create policy "supawake_read_heartbeat"
-on public.supawake_heartbeat
+create policy "sb_heartbeat_read"
+on public.sb_heartbeat
 for select
 to anon
 using (id is true);
@@ -295,12 +296,12 @@ Design notes:
 
 The uninstall migration uses the same ownership and shape checks. It is a
 no-op when the object is absent and aborts when a same-named object is not a
-valid Supawake v1 table. Only a validated Supawake-owned table is removed:
+valid SB Heartbeat v1 table. Only a validated SB Heartbeat-owned table is removed:
 
 ```sql
-do $supawake$
+do $sb_heartbeat$
 begin
-  if to_regclass('public.supawake_heartbeat') is null then
+  if to_regclass('public.sb_heartbeat') is null then
     return;
   end if;
 
@@ -308,10 +309,10 @@ begin
     select 1
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
-    where c.oid = 'public.supawake_heartbeat'::regclass
+    where c.oid = 'public.sb_heartbeat'::regclass
       and n.nspname = 'public'
       and c.relkind = 'r'
-      and obj_description(c.oid, 'pg_class') = 'supawake:heartbeat:v1'
+      and obj_description(c.oid, 'pg_class') = 'sb-heartbeat:managed:v1'
       and (
         select count(*)
         from pg_attribute a
@@ -342,7 +343,7 @@ begin
       and exists (
         select 1 from pg_constraint k
         where k.conrelid = c.oid
-          and k.conname = 'supawake_heartbeat_single_row'
+          and k.conname = 'sb_heartbeat_single_row'
           and k.contype = 'c'
           and lower(regexp_replace(
             pg_get_expr(k.conbin, k.conrelid), '[[:space:]()]', '', 'g'
@@ -350,12 +351,12 @@ begin
       )
   ) then
     raise exception
-      'refusing to remove non-Supawake object public.supawake_heartbeat';
+      'refusing to remove non-SB Heartbeat object public.sb_heartbeat';
   end if;
 
-  drop table public.supawake_heartbeat;
+  drop table public.sb_heartbeat;
 end
-$supawake$;
+$sb_heartbeat$;
 ```
 
 As with installation, uninstall uses the validation predicate inline and
@@ -369,7 +370,7 @@ file when an explicit output path is supplied. They never apply SQL.
 The MVP request is fixed and is equivalent to:
 
 ```http
-GET /rest/v1/supawake_heartbeat?select=id&id=eq.true&limit=1
+GET /rest/v1/sb_heartbeat?select=id&id=eq.true&limit=1
 ```
 
 Credential headers depend on the key type:
@@ -406,13 +407,13 @@ to audit than a security-definer function.
 
 ### 9.1 Supported keys
 
-Supawake supports:
+SB Heartbeat supports:
 
 - Supabase publishable keys (`sb_publishable_...`), recommended for new setup;
 - legacy Supabase anon JWT keys, supported because they remain common and
   familiar.
 
-Supawake rejects:
+SB Heartbeat rejects:
 
 - Supabase secret keys (`sb_secret_...`);
 - legacy JWT keys whose decoded role is `service_role`; and
@@ -432,8 +433,8 @@ tradeoff:
 - Keeping them out of version control is still useful defense-in-depth and
   reduces accidental reuse or quota abuse.
 - Users may deliberately store a low-privilege public key in their own
-  repository; Supawake warns but does not prohibit this.
-- The Supawake development repository itself must never contain real project
+  repository; SB Heartbeat warns but does not prohibit this.
+- The SB Heartbeat development repository itself must never contain real project
   keys, `.env` files, or integration credentials.
 
 Inline key values are excluded from the MVP. They remain a possible 1.0 feature
@@ -442,15 +443,15 @@ only if a concrete use case outweighs the ambiguity and leakage risk.
 ### 9.3 Legacy-key lifecycle
 
 Legacy anon support is a compatibility feature, not the long-term preferred
-path. Supawake supports it throughout the 0.x series and in 1.0 only while the
+path. SB Heartbeat supports it throughout the 0.x series and in 1.0 only while the
 hosted Supabase platform still accepts it. Hosted behavior is tested before
 each release. A platform-driven warning or removal can occur in a future minor
 release without changing the generic `api_key` configuration field; an actual
-Supawake-driven removal requires a major release and migration documentation.
+SB Heartbeat-driven removal requires a major release and migration documentation.
 
 ## 10. Configuration
 
-Default file: `supawake.yaml`
+Default file: `sb-heartbeat.yaml`
 
 ```yaml
 version: 1
@@ -488,8 +489,8 @@ Configuration requirements:
 Suggested implicit environment variable names for `travally-staging` are:
 
 ```text
-SUPAWAKE_TRAVALLY_STAGING_URL
-SUPAWAKE_TRAVALLY_STAGING_API_KEY
+SB_HEARTBEAT_TRAVALLY_STAGING_URL
+SB_HEARTBEAT_TRAVALLY_STAGING_API_KEY
 ```
 
 Explicit environment names always take precedence.
@@ -497,7 +498,7 @@ Explicit environment names always take precedence.
 Configuration discovery is deterministic:
 
 1. `--config PATH`, when supplied;
-2. otherwise exactly `./supawake.yaml` in the current working directory.
+2. otherwise exactly `./sb-heartbeat.yaml` in the current working directory.
 
 There is no upward directory search and no configuration-path environment
 variable in the MVP. A missing file is exit 2. Relative paths are resolved from
@@ -562,7 +563,7 @@ The schedule is configurable through configuration and generator flags. The
 non-round minute reduces scheduler congestion. A later release may derive a
 stable per-project or per-installation minute to distribute load.
 
-Supawake documentation must state that:
+SB Heartbeat documentation must state that:
 
 - schedulers are not guaranteed to run at an exact instant;
 - GitHub scheduled workflows can be delayed or dropped under load;
@@ -580,16 +581,16 @@ permissions, logs, and exit-code monitoring.
 ### 12.1 MVP commands
 
 ```text
-supawake init
-supawake run
-supawake doctor
-supawake migration install
-supawake migration uninstall
-supawake install github
-supawake version
+sb-heartbeat init
+sb-heartbeat run
+sb-heartbeat doctor
+sb-heartbeat migration install
+sb-heartbeat migration uninstall
+sb-heartbeat install github
+sb-heartbeat version
 ```
 
-`supawake check` may be a hidden or documented alias for `run` if it adds
+`sb-heartbeat check` may be a hidden or documented alias for `run` if it adds
 negligible maintenance cost.
 
 ### 12.2 `init`
@@ -601,7 +602,7 @@ generate migration and GitHub workflow files.
 Noninteractive setup supports every essential choice:
 
 ```bash
-supawake init \
+sb-heartbeat init \
   --non-interactive \
   --project-name travally-staging \
   --url-env TRAVALLY_SUPABASE_URL \
@@ -615,13 +616,13 @@ is enabled only when applicable.
 
 MVP file-generation behavior is explicit:
 
-- `init` writes only `./supawake.yaml` unless generation flags are supplied.
+- `init` writes only `./sb-heartbeat.yaml` unless generation flags are supplied.
 - `migration install|uninstall` prints to standard output unless
   `--output PATH` is supplied.
 - `init --migration-output PATH` writes the install migration to that exact
   path; it does not invent a timestamped migration filename.
 - `init --scheduler github` and `install github` target
-  `.github/workflows/supawake.yml`.
+  `.github/workflows/sb-heartbeat.yml`.
 - `--force` atomically replaces only the exact requested generated file. It
   never merges YAML or SQL, creates a backup, follows a symlink target, or
   overwrites a directory.
@@ -636,9 +637,9 @@ MVP file-generation behavior is explicit:
 ### 12.3 `run`
 
 ```bash
-supawake run
-supawake run --project travally-staging
-supawake run --output json
+sb-heartbeat run
+sb-heartbeat run --project travally-staging
+sb-heartbeat run --output json
 ```
 
 Multiple projects use the section 10.1 concurrency contract. Output ordering
@@ -815,13 +816,13 @@ policy.
 
 ## 14. GitHub Actions integration
 
-`supawake install github` generates `.github/workflows/supawake.yml` with:
+`sb-heartbeat install github` generates `.github/workflows/sb-heartbeat.yml` with:
 
 - `schedule` using the configured cron expression;
 - `workflow_dispatch`;
 - `permissions: contents: read`;
 - a job timeout;
-- a pinned Supawake release version;
+- a pinned SB Heartbeat release version;
 - checksum verification rather than `curl | sh`;
 - one static environment mapping per project;
 - JSON execution output; and
@@ -839,9 +840,9 @@ The MVP mapping is deterministic:
 Users who prefer a different GitHub store can edit the generated workflow or
 use explicit future generator options; the MVP keeps one predictable mapping.
 
-The workflow checks out the repository because `supawake run` reads the tracked
-`supawake.yaml`. Checkout and any other third-party action are pinned to a full
-commit SHA. The workflow installs an exact Supawake version and verifies its
+The workflow checks out the repository because `sb-heartbeat run` reads the tracked
+`sb-heartbeat.yaml`. Checkout and any other third-party action are pinned to a full
+commit SHA. The workflow installs an exact SB Heartbeat version and verifies its
 published checksum.
 
 The generator follows section 12.2 overwrite behavior. It documents that cron
@@ -860,12 +861,12 @@ Agent readiness means predictable noninteractive commands, focused docs, safe
 defaults, and machine-readable output. It does not mean injecting broad agent
 instructions into downstream repositories.
 
-The Supawake source repository may contain an `AGENTS.md` for contributors. The
+The SB Heartbeat source repository may contain an `AGENTS.md` for contributors. The
 installer must never create, replace, append to, or otherwise alter a user's
 existing `AGENTS.md`, `CLAUDE.md`, or equivalent instruction file without
 explicit approval.
 
-Agent-facing product documentation lives in Supawake itself, initially:
+Agent-facing product documentation lives in SB Heartbeat itself, initially:
 
 ```text
 docs/agent-install.md
@@ -875,7 +876,7 @@ docs/agent-prompts.md
 An optional generated downstream file may use a namespaced location such as:
 
 ```text
-.supawake/agent-install.md
+.sb-heartbeat/agent-install.md
 ```
 
 Generation is opt-in and must not be required for normal operation.
@@ -921,7 +922,7 @@ and must reject hosts such as `project.supabase.co.example.com`.
 
 ```text
 cmd/
-  supawake/
+  sb-heartbeat/
     main.go
 internal/
   cli/
@@ -1204,6 +1205,6 @@ Supporting line:
 
 Agent-oriented line:
 
-> Give your coding agent Supawake's installation guide and let it generate the
+> Give your coding agent SB Heartbeat's installation guide and let it generate the
 > migration, scheduler, and verification steps without touching your existing
 > repository instructions.

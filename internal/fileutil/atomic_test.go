@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jfox85/supawake/internal/fileutil"
+	"github.com/jfox85/sb-heartbeat/internal/fileutil"
 )
 
 func TestWriteAtomicRefusesSymlinkEvenWithForce(t *testing.T) {

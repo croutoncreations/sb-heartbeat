@@ -3,7 +3,7 @@ package heartbeat_test
 import (
 	"testing"
 
-	"github.com/jfox85/supawake/internal/heartbeat"
+	"github.com/jfox85/sb-heartbeat/internal/heartbeat"
 )
 
 func TestExitCodeContract(t *testing.T) {

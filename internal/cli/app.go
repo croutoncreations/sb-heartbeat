@@ -7,20 +7,22 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/jfox85/supawake/internal/config"
-	"github.com/jfox85/supawake/internal/credentials"
-	"github.com/jfox85/supawake/internal/fileutil"
-	"github.com/jfox85/supawake/internal/heartbeat"
-	"github.com/jfox85/supawake/internal/migration"
-	"github.com/jfox85/supawake/internal/output"
-	"github.com/jfox85/supawake/internal/security"
+	"github.com/jfox85/sb-heartbeat/internal/config"
+	"github.com/jfox85/sb-heartbeat/internal/credentials"
+	"github.com/jfox85/sb-heartbeat/internal/fileutil"
+	"github.com/jfox85/sb-heartbeat/internal/heartbeat"
+	"github.com/jfox85/sb-heartbeat/internal/migration"
+	"github.com/jfox85/sb-heartbeat/internal/output"
+	"github.com/jfox85/sb-heartbeat/internal/scheduler"
+	"github.com/jfox85/sb-heartbeat/internal/security"
 	"github.com/spf13/cobra"
 )
 
-const Version = "0.1.0-dev"
+var Version = "devel"
 
 type Dependencies struct {
 	Stdin       io.Reader
@@ -95,14 +97,14 @@ func withDefaults(dependencies Dependencies) Dependencies {
 
 func (a *app) rootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "supawake",
+		Use:           "sb-heartbeat",
 		Short:         "Run least-privilege Supabase database heartbeats",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
-	root.PersistentFlags().StringVar(&a.configPath, "config", "supawake.yaml", "configuration file")
+	root.PersistentFlags().StringVar(&a.configPath, "config", "sb-heartbeat.yaml", "configuration file")
 	root.PersistentFlags().StringVar(&a.outputMode, "output", "", "output format: text or json")
-	root.AddCommand(a.runCommand(false), a.runCommand(true), a.initCommand(), a.migrationCommand())
+	root.AddCommand(a.runCommand(false), a.runCommand(true), a.initCommand(), a.migrationCommand(), a.installCommand())
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
@@ -255,9 +257,10 @@ func runProjects(ctx context.Context, projects []heartbeat.Project, defaults con
 func (a *app) initCommand() *cobra.Command {
 	var nonInteractive, force bool
 	var outputPath, projectName, urlEnv, keyEnv, cron string
+	var schedulerName, workflowOutput, workflowConfig, sbHeartbeatVersion string
 	command := &cobra.Command{
 		Use:   "init",
-		Short: "Create a Supawake configuration",
+		Short: "Create a SB Heartbeat configuration",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if !nonInteractive {
@@ -291,21 +294,99 @@ func (a *app) initCommand() *cobra.Command {
 			if err != nil {
 				return &commandError{stableCode: "internal_error", message: err.Error()}
 			}
+			var workflow []byte
+			if schedulerName != "" {
+				if schedulerName != "github" {
+					return &commandError{stableCode: "invalid_invocation", message: "scheduler must be github"}
+				}
+				workflow, err = scheduler.GitHub(cfg, sbHeartbeatVersion, workflowConfig)
+				if err != nil {
+					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+				}
+			}
+			if workflow != nil {
+				configTarget, configErr := filepath.Abs(outputPath)
+				workflowTarget, workflowErr := filepath.Abs(workflowOutput)
+				if configErr != nil || workflowErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve output paths"}
+				}
+				if configTarget == workflowTarget {
+					return &commandError{stableCode: "invalid_invocation", message: "configuration and workflow outputs must be different files"}
+				}
+			}
+			if err := fileutil.CheckTarget(outputPath, force); err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			if workflow != nil {
+				if err := fileutil.CheckTarget(workflowOutput, force); err != nil {
+					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+				}
+			}
 			if err := fileutil.WriteAtomic(outputPath, data, 0o644, force); err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			fmt.Fprintln(a.dependencies.Stdout, "Created", outputPath)
+			if workflow != nil {
+				if err := fileutil.WriteAtomic(workflowOutput, workflow, 0o644, force); err != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "configuration was created, but workflow creation failed: " + err.Error()}
+				}
+				fmt.Fprintln(a.dependencies.Stdout, "Created", workflowOutput)
+			}
+			return nil
+		},
+	}
+	command.Flags().BoolVar(&nonInteractive, "non-interactive", false, "require all setup values as flags")
+	command.Flags().BoolVar(&force, "force", false, "replace the exact output file")
+	command.Flags().StringVar(&outputPath, "output-path", "sb-heartbeat.yaml", "configuration output path")
+	command.Flags().StringVar(&projectName, "project-name", "", "project name")
+	command.Flags().StringVar(&urlEnv, "url-env", "", "environment variable containing the project URL")
+	command.Flags().StringVar(&keyEnv, "api-key-env", "", "environment variable containing the low-privilege API key")
+	command.Flags().StringVar(&cron, "cron", config.DefaultCron, "scheduler cron expression")
+	command.Flags().StringVar(&schedulerName, "scheduler", "", "also generate a scheduler: github")
+	command.Flags().StringVar(&workflowOutput, "workflow-output", ".github/workflows/sb-heartbeat.yml", "GitHub workflow output path")
+	command.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
+	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", Version, "exact SB Heartbeat release tag for generated automation")
+	return command
+}
+
+func (a *app) installCommand() *cobra.Command {
+	parent := &cobra.Command{Use: "install", Short: "Generate scheduler integrations"}
+	var outputPath, version, workflowConfig string
+	var force bool
+	github := &cobra.Command{
+		Use:   "github",
+		Short: "Generate a GitHub Actions workflow",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			file, err := os.Open(a.configPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "open configuration: " + err.Error()}
+			}
+			cfg, loadErr := config.Load(file)
+			closeErr := file.Close()
+			if loadErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: loadErr.Error()}
+			}
+			if closeErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: closeErr.Error()}
+			}
+			workflow, err := scheduler.GitHub(cfg, version, workflowConfig)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			if err := fileutil.WriteAtomic(outputPath, workflow, 0o644, force); err != nil {
 				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 			}
 			fmt.Fprintln(a.dependencies.Stdout, "Created", outputPath)
 			return nil
 		},
 	}
-	command.Flags().BoolVar(&nonInteractive, "non-interactive", false, "require all setup values as flags")
-	command.Flags().BoolVar(&force, "force", false, "replace the exact output file")
-	command.Flags().StringVar(&outputPath, "output-path", "supawake.yaml", "configuration output path")
-	command.Flags().StringVar(&projectName, "project-name", "", "project name")
-	command.Flags().StringVar(&urlEnv, "url-env", "", "environment variable containing the project URL")
-	command.Flags().StringVar(&keyEnv, "api-key-env", "", "environment variable containing the low-privilege API key")
-	command.Flags().StringVar(&cron, "cron", config.DefaultCron, "scheduler cron expression")
-	return command
+	github.Flags().StringVar(&outputPath, "output-path", ".github/workflows/sb-heartbeat.yml", "workflow output path")
+	github.Flags().StringVar(&version, "sb-heartbeat-version", Version, "exact SB Heartbeat release tag")
+	github.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
+	github.Flags().BoolVar(&force, "force", false, "replace the exact output file")
+	parent.AddCommand(github)
+	return parent
 }
 
 func prompt(reader *bufio.Reader, writer io.Writer, label, defaultValue string) (string, error) {

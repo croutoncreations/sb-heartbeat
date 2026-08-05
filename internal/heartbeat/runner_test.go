@@ -26,7 +26,7 @@ func projectFor(t *testing.T, name, rawURL string) Project {
 func healthyServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rest/v1/supawake_heartbeat" {
+		if r.URL.Path != "/rest/v1/sb_heartbeat" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		if got := r.URL.Query().Get("select"); got != "id" {

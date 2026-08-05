@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/jfox85/supawake/internal/cli"
+	"github.com/jfox85/sb-heartbeat/internal/cli"
 )
 
 func main() {

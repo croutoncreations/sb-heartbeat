@@ -8,28 +8,15 @@ import (
 )
 
 func WriteAtomic(path string, data []byte, mode os.FileMode, force bool) error {
-	if path == "" {
-		return errors.New("output path is empty")
-	}
-	if info, err := os.Lstat(path); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("refusing to overwrite symlink %s", path)
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("refusing to overwrite non-regular file %s", path)
-		}
-		if !force {
-			return fmt.Errorf("file already exists: %s", path)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect output path: %w", err)
+	if err := CheckTarget(path, force); err != nil {
+		return err
 	}
 
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
-	temporary, err := os.CreateTemp(dir, ".supawake-*")
+	temporary, err := os.CreateTemp(dir, ".sb-heartbeat-*")
 	if err != nil {
 		return fmt.Errorf("create temporary file: %w", err)
 	}
@@ -54,5 +41,26 @@ func WriteAtomic(path string, data []byte, mode os.FileMode, force bool) error {
 	if err := os.Rename(temporaryPath, path); err != nil {
 		return fmt.Errorf("replace output file: %w", err)
 	}
+	return nil
+}
+
+func CheckTarget(path string, force bool) error {
+	if path == "" {
+		return errors.New("output path is empty")
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to overwrite symlink %s", path)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("refusing to overwrite non-regular file %s", path)
+		}
+		if !force {
+			return fmt.Errorf("file already exists: %s", path)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect output path: %w", err)
+	}
+
 	return nil
 }

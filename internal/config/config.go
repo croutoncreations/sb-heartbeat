@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
 )
 
@@ -220,6 +221,10 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Scheduler.Cron) == "" {
 		problems = append(problems, "scheduler.cron must not be empty")
+	} else if len(strings.Fields(c.Scheduler.Cron)) != 5 {
+		problems = append(problems, "scheduler.cron must be a valid five-field POSIX cron expression")
+	} else if _, err := cron.ParseStandard(c.Scheduler.Cron); err != nil {
+		problems = append(problems, "scheduler.cron must be a valid five-field POSIX cron expression")
 	}
 	if len(c.Projects) == 0 {
 		problems = append(problems, "at least one project is required")

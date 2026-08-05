@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jfox85/supawake/internal/credentials"
-	clientfactory "github.com/jfox85/supawake/internal/httpclient"
+	"github.com/jfox85/sb-heartbeat/internal/credentials"
+	clientfactory "github.com/jfox85/sb-heartbeat/internal/httpclient"
 )
 
 const maxResponseBytes = 64 * 1024
@@ -168,7 +168,7 @@ func heartbeatURL(base *url.URL) (*url.URL, error) {
 		return nil, errors.New("base URL is missing")
 	}
 	u := *base
-	u.Path = "/rest/v1/supawake_heartbeat"
+	u.Path = "/rest/v1/sb_heartbeat"
 	u.RawPath = ""
 	u.RawQuery = url.Values{
 		"select": {"id"},

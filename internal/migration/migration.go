@@ -6,10 +6,10 @@ const managedTablePredicate = `exists (
       select 1
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
-      where c.oid = 'public.supawake_heartbeat'::regclass
+      where c.oid = 'public.sb_heartbeat'::regclass
         and n.nspname = 'public'
         and c.relkind = 'r'
-        and obj_description(c.oid, 'pg_class') = 'supawake:heartbeat:v1'
+        and obj_description(c.oid, 'pg_class') = 'sb-heartbeat:managed:v1'
         and (
           select count(*) from pg_attribute a
           where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
@@ -39,7 +39,7 @@ const managedTablePredicate = `exists (
         and exists (
           select 1 from pg_constraint k
           where k.conrelid = c.oid
-            and k.conname = 'supawake_heartbeat_single_row'
+            and k.conname = 'sb_heartbeat_single_row'
             and k.contype = 'c'
             and lower(regexp_replace(
               pg_get_expr(k.conbin, k.conrelid), '[[:space:]()]', '', 'g'
@@ -50,44 +50,44 @@ const managedTablePredicate = `exists (
 func InstallSQL() string {
 	return fmt.Sprintf(`begin;
 
-do $supawake$
+do $sb_heartbeat$
 begin
-  if to_regclass('public.supawake_heartbeat') is null then
-    create table public.supawake_heartbeat (
+  if to_regclass('public.sb_heartbeat') is null then
+    create table public.sb_heartbeat (
       id boolean primary key,
       created_at timestamptz not null default now(),
-      constraint supawake_heartbeat_single_row check (id is true)
+      constraint sb_heartbeat_single_row check (id is true)
     );
 
-    comment on table public.supawake_heartbeat
-      is 'supawake:heartbeat:v1';
+    comment on table public.sb_heartbeat
+      is 'sb-heartbeat:managed:v1';
   else
     if not %s then
       raise exception
-        'public.supawake_heartbeat exists but is not a valid Supawake v1 table';
+        'public.sb_heartbeat exists but is not a valid SB Heartbeat v1 table';
     end if;
   end if;
 end
-$supawake$;
+$sb_heartbeat$;
 
-insert into public.supawake_heartbeat (id)
+insert into public.sb_heartbeat (id)
 values (true)
 on conflict (id) do nothing;
 
-alter table public.supawake_heartbeat enable row level security;
+alter table public.sb_heartbeat enable row level security;
 
-revoke all on table public.supawake_heartbeat
+revoke all on table public.sb_heartbeat
 from public, anon, authenticated, service_role;
 
 grant select (id)
-on table public.supawake_heartbeat
+on table public.sb_heartbeat
 to anon;
 
-drop policy if exists "supawake_read_heartbeat"
-on public.supawake_heartbeat;
+drop policy if exists "sb_heartbeat_read"
+on public.sb_heartbeat;
 
-create policy "supawake_read_heartbeat"
-on public.supawake_heartbeat
+create policy "sb_heartbeat_read"
+on public.sb_heartbeat
 for select
 to anon
 using (id is true);
@@ -99,20 +99,20 @@ commit;
 func UninstallSQL() string {
 	return fmt.Sprintf(`begin;
 
-do $supawake$
+do $sb_heartbeat$
 begin
-  if to_regclass('public.supawake_heartbeat') is null then
+  if to_regclass('public.sb_heartbeat') is null then
     return;
   end if;
 
   if not %s then
     raise exception
-      'refusing to remove non-Supawake object public.supawake_heartbeat';
+      'refusing to remove non-SB Heartbeat object public.sb_heartbeat';
   end if;
 
-  drop table public.supawake_heartbeat;
+  drop table public.sb_heartbeat;
 end
-$supawake$;
+$sb_heartbeat$;
 
 commit;
 `, managedTablePredicate)

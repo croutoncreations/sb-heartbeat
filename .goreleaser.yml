@@ -1,0 +1,36 @@
+version: 2
+
+project_name: sb-heartbeat
+
+builds:
+  - id: sb-heartbeat
+    main: ./cmd/sb-heartbeat
+    binary: sb-heartbeat
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/jfox85/sb-heartbeat/internal/cli.Version=v{{ .Version }}
+
+archives:
+  - ids:
+      - sb-heartbeat
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
