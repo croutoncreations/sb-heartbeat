@@ -88,6 +88,7 @@ func TestLoadRejectsInvalidNamesBindingsAndBounds(t *testing.T) {
 		"concurrency":       strings.Replace(validConfig, "concurrency: 4", "concurrency: 17", 1),
 		"cron":              strings.Replace(validConfig, `cron: "37 3,11,19 * * *"`, `cron: "not a cron"`, 1),
 		"cron descriptor":   strings.Replace(validConfig, `cron: "37 3,11,19 * * *"`, `cron: "@daily"`, 1),
+		"multiline cron":    strings.Replace(validConfig, `cron: "37 3,11,19 * * *"`, "cron: |\n    37 3,11,19\n    * * *", 1),
 	}
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {

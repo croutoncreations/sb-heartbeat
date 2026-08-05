@@ -22,9 +22,8 @@ sb-heartbeat init \
   --non-interactive \
   --project-name my-staging-project \
   --url-env MY_STAGING_SUPABASE_URL \
-  --api-key-env MY_STAGING_SUPABASE_API_KEY
-
-sb-heartbeat migration install --output supabase/migrations/20260804_sb-heartbeat.sql
+  --api-key-env MY_STAGING_SUPABASE_API_KEY \
+  --migration-output supabase/migrations/20260804_sb-heartbeat.sql
 ```
 
 Review and apply the generated SQL through your normal migration process, then:
@@ -53,6 +52,9 @@ For each project, create the configured URL as a GitHub Actions variable and
 the API key as a GitHub Actions secret. The generated workflow runs at
 `37 3,11,19 * * *` by default and supports manual dispatch.
 
+For a local scheduler, `sb-heartbeat install cron` prints a shell-safe suggested
+entry and the required environment-variable names. It never edits your crontab.
+
 ## Security model
 
 - The generated table has one possible row.
@@ -76,6 +78,7 @@ sb-heartbeat run [--project NAME] [--output text|json]
 sb-heartbeat doctor [--project NAME] [--output text|json]
 sb-heartbeat migration install|uninstall [--output PATH]
 sb-heartbeat install github --sb-heartbeat-version VERSION
+sb-heartbeat install cron [--binary-path PATH] [--log-path PATH]
 sb-heartbeat version
 ```
 
@@ -88,7 +91,9 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Configuration](docs/configuration.md)
 - [Security model](docs/security.md)
 - [GitHub Actions](docs/github-actions.md)
+- [Local cron](docs/local-cron.md)
 - [Agent installation](docs/agent-install.md)
+- [Agent prompts](docs/agent-prompts.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Uninstall](docs/uninstall.md)
 - [Product specification](docs/product-spec.md)

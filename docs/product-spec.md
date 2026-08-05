@@ -587,6 +587,7 @@ sb-heartbeat doctor
 sb-heartbeat migration install
 sb-heartbeat migration uninstall
 sb-heartbeat install github
+sb-heartbeat install cron
 sb-heartbeat version
 ```
 
@@ -630,8 +631,10 @@ MVP file-generation behavior is explicit:
 - Commands that would write several files preflight every target and render all
   content before writing. A collision or render error produces no writes.
 - Each individual file is written to a same-directory temporary file, synced,
-  permissions set, and atomically renamed. A process or filesystem failure
-  between multiple renames may still leave a partial multi-file result; the
+  and permissioned. Without `--force` it is atomically installed only if the
+  destination is still absent; with `--force` it is atomically renamed over the
+  validated regular-file destination. A process or filesystem failure between
+  multiple installations may still leave a partial multi-file result; the
   command reports every completed path so recovery is explicit.
 
 ### 12.3 `run`

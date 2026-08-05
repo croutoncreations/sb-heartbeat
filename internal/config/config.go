@@ -221,6 +221,8 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Scheduler.Cron) == "" {
 		problems = append(problems, "scheduler.cron must not be empty")
+	} else if strings.ContainsAny(c.Scheduler.Cron, "\r\n") {
+		problems = append(problems, "scheduler.cron must be a single-line five-field POSIX cron expression")
 	} else if len(strings.Fields(c.Scheduler.Cron)) != 5 {
 		problems = append(problems, "scheduler.cron must be a valid five-field POSIX cron expression")
 	} else if _, err := cron.ParseStandard(c.Scheduler.Cron); err != nil {

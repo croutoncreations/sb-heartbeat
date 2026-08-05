@@ -17,13 +17,14 @@ import (
 )
 
 type harness struct {
-	stdin  *strings.Reader
-	stdout bytes.Buffer
-	stderr bytes.Buffer
-	env    map[string]string
-	called bool
-	seen   []heartbeat.Project
-	result []heartbeat.Result
+	stdin      *strings.Reader
+	stdout     bytes.Buffer
+	stderr     bytes.Buffer
+	env        map[string]string
+	called     bool
+	seen       []heartbeat.Project
+	result     []heartbeat.Result
+	executable string
 }
 
 func (h *harness) dependencies() cli.Dependencies {
@@ -47,6 +48,12 @@ func (h *harness) dependencies() cli.Dependencies {
 			return results
 		},
 		Now: func() time.Time { return time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC) },
+		Executable: func() (string, error) {
+			if h.executable == "" {
+				return "/usr/local/bin/sb-heartbeat", nil
+			}
+			return h.executable, nil
+		},
 	}
 	if h.stdin != nil {
 		dependencies.Stdin = h.stdin
@@ -389,5 +396,99 @@ func TestInitGitHubRejectsSameOutputTarget(t *testing.T) {
 	}
 	if _, err := os.Stat(sharedPath); !os.IsNotExist(err) {
 		t.Fatalf("shared output was written: %v", err)
+	}
+}
+
+func TestInitWritesInstallMigration(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "sb-heartbeat.yaml")
+	migrationPath := filepath.Join(dir, "migrations", "sb-heartbeat.sql")
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", configPath,
+		"--project-name", "demo", "--url-env", "DEMO_URL", "--api-key-env", "DEMO_KEY",
+		"--migration-output", migrationPath,
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	migrationData, err := os.ReadFile(migrationPath)
+	if err != nil || !strings.Contains(string(migrationData), "sb-heartbeat:managed:v1") {
+		t.Fatalf("migration = %q, err = %v", migrationData, err)
+	}
+	if !strings.Contains(h.stdout.String(), configPath) || !strings.Contains(h.stdout.String(), migrationPath) {
+		t.Fatalf("output = %q", h.stdout.String())
+	}
+}
+
+func TestInitMigrationPreflightsAllTargets(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "sb-heartbeat.yaml")
+	migrationPath := filepath.Join(dir, "migration.sql")
+	if err := os.WriteFile(migrationPath, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", configPath,
+		"--project-name", "demo", "--url-env", "DEMO_URL", "--api-key-env", "DEMO_KEY",
+		"--migration-output", migrationPath,
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d", code)
+	}
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("configuration was written despite migration collision: %v", err)
+	}
+}
+
+func TestInitRejectsAliasedMigrationTarget(t *testing.T) {
+	dir := t.TempDir()
+	sharedPath := filepath.Join(dir, "sb-heartbeat.yaml")
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", sharedPath,
+		"--project-name", "demo", "--url-env", "DEMO_URL", "--api-key-env", "DEMO_KEY",
+		"--migration-output", filepath.Join(dir, ".", "sb-heartbeat.yaml"),
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d", code)
+	}
+	if _, err := os.Stat(sharedPath); !os.IsNotExist(err) {
+		t.Fatalf("shared output was written: %v", err)
+	}
+}
+
+func TestInstallCronPrintsSuggestionWithoutWriting(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	logPath := filepath.Join(dir, "heartbeat.log")
+	h := &harness{executable: "/Applications/SB Heartbeat/sb-heartbeat"}
+	args := []string{"--config", configPath, "install", "cron", "--log-path", logPath}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if !strings.Contains(h.stdout.String(), "37 3,11,19 * * *") ||
+		!strings.Contains(h.stdout.String(), "DEMO") && !strings.Contains(h.stdout.String(), "FIRST_URL") {
+		t.Fatalf("output = %q", h.stdout.String())
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("cron command wrote log path: %v", err)
+	}
+}
+
+func TestInstallCronResolvesDetectedExecutableToAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	h := &harness{executable: filepath.Join("bin", "sb-heartbeat")}
+	if code := cli.Execute(context.Background(), []string{"--config", configPath, "install", "cron"}, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	expected, err := filepath.Abs(h.executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.stdout.String(), expected) {
+		t.Fatalf("output = %q, want %q", h.stdout.String(), expected)
 	}
 }

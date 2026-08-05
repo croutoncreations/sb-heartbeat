@@ -34,5 +34,6 @@ Runtime ranges:
 | Concurrent projects | 4 | 1–16 |
 | Response body | 64 KiB | fixed |
 
-Cron uses a five-field POSIX expression interpreted as UTC by GitHub Actions.
-The default runs at 03:37, 11:37, and 19:37 UTC.
+Cron uses a five-field POSIX expression. GitHub Actions interprets it as UTC;
+local cron uses the scheduler host's timezone. The default runs at minutes 37
+of hours 3, 11, and 19 in the applicable timezone.

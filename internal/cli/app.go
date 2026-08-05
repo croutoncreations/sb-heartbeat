@@ -32,6 +32,7 @@ type Dependencies struct {
 	LookupEnv   func(string) (string, bool)
 	RunProjects func(context.Context, []heartbeat.Project, config.Defaults) []heartbeat.Result
 	Now         func() time.Time
+	Executable  func() (string, error)
 }
 
 type app struct {
@@ -94,6 +95,9 @@ func withDefaults(dependencies Dependencies) Dependencies {
 	}
 	if dependencies.Now == nil {
 		dependencies.Now = time.Now
+	}
+	if dependencies.Executable == nil {
+		dependencies.Executable = os.Executable
 	}
 	if dependencies.RunProjects == nil {
 		dependencies.RunProjects = runProjects
@@ -275,7 +279,7 @@ func runProjects(ctx context.Context, projects []heartbeat.Project, defaults con
 
 func (a *app) initCommand() *cobra.Command {
 	var nonInteractive, force bool
-	var outputPath, projectName, urlEnv, keyEnv, cron string
+	var outputPath, projectName, urlEnv, keyEnv, cron, migrationOutput string
 	var schedulerName, workflowOutput, workflowConfig, sbHeartbeatVersion string
 	command := &cobra.Command{
 		Use:   "init",
@@ -314,6 +318,10 @@ func (a *app) initCommand() *cobra.Command {
 				return &commandError{stableCode: "internal_error", message: err.Error()}
 			}
 			var workflow []byte
+			var migrationData []byte
+			if migrationOutput != "" {
+				migrationData = []byte(migration.InstallSQL())
+			}
 			if schedulerName != "" {
 				if schedulerName != "github" {
 					return &commandError{stableCode: "invalid_invocation", message: "scheduler must be github"}
@@ -323,21 +331,18 @@ func (a *app) initCommand() *cobra.Command {
 					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 				}
 			}
-			if workflow != nil {
-				configTarget, configErr := filepath.Abs(outputPath)
-				workflowTarget, workflowErr := filepath.Abs(workflowOutput)
-				if configErr != nil || workflowErr != nil {
-					return &commandError{stableCode: "invalid_invocation", message: "resolve output paths"}
-				}
-				if configTarget == workflowTarget {
-					return &commandError{stableCode: "invalid_invocation", message: "configuration and workflow outputs must be different files"}
-				}
-			}
-			if err := fileutil.CheckTarget(outputPath, force); err != nil {
-				return generatedFileCommandError(err, "")
+			targets := []string{outputPath}
+			if migrationData != nil {
+				targets = append(targets, migrationOutput)
 			}
 			if workflow != nil {
-				if err := fileutil.CheckTarget(workflowOutput, force); err != nil {
+				targets = append(targets, workflowOutput)
+			}
+			if err := validateDistinctOutputPaths(targets); err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			for _, target := range targets {
+				if err := fileutil.CheckTarget(target, force); err != nil {
 					return generatedFileCommandError(err, "")
 				}
 			}
@@ -345,9 +350,15 @@ func (a *app) initCommand() *cobra.Command {
 				return generatedFileCommandError(err, "")
 			}
 			fmt.Fprintln(a.dependencies.Stdout, "Created", outputPath)
+			if migrationData != nil {
+				if err := fileutil.WriteAtomic(migrationOutput, migrationData, 0o644, force); err != nil {
+					return generatedFileCommandError(err, "configuration was created, but migration creation failed: ")
+				}
+				fmt.Fprintln(a.dependencies.Stdout, "Created", migrationOutput)
+			}
 			if workflow != nil {
 				if err := fileutil.WriteAtomic(workflowOutput, workflow, 0o644, force); err != nil {
-					return generatedFileCommandError(err, "configuration was created, but workflow creation failed: ")
+					return generatedFileCommandError(err, "earlier files were created, but workflow creation failed: ")
 				}
 				fmt.Fprintln(a.dependencies.Stdout, "Created", workflowOutput)
 			}
@@ -361,6 +372,7 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&urlEnv, "url-env", "", "environment variable containing the project URL")
 	command.Flags().StringVar(&keyEnv, "api-key-env", "", "environment variable containing the low-privilege API key")
 	command.Flags().StringVar(&cron, "cron", config.DefaultCron, "scheduler cron expression")
+	command.Flags().StringVar(&migrationOutput, "migration-output", "", "also write the install migration to this exact path")
 	command.Flags().StringVar(&schedulerName, "scheduler", "", "also generate a scheduler: github")
 	command.Flags().StringVar(&workflowOutput, "workflow-output", ".github/workflows/sb-heartbeat.yml", "GitHub workflow output path")
 	command.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
@@ -408,7 +420,53 @@ func (a *app) installCommand() *cobra.Command {
 	github.Flags().StringVar(&version, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag")
 	github.Flags().StringVar(&workflowConfig, "workflow-config", "sb-heartbeat.yaml", "repository-relative config path used by GitHub Actions")
 	github.Flags().BoolVar(&force, "force", false, "replace the exact output file")
-	parent.AddCommand(github)
+
+	var cronBinaryPath, cronLogPath string
+	cron := &cobra.Command{
+		Use:   "cron",
+		Short: "Print a suggested local crontab entry without installing it",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			resolvedConfigPath, err := filepath.Abs(a.configPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
+			}
+			file, err := os.Open(resolvedConfigPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "open configuration " + resolvedConfigPath + ": " + err.Error()}
+			}
+			cfg, loadErr := config.Load(file)
+			closeErr := file.Close()
+			if loadErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "load configuration " + resolvedConfigPath + ": " + loadErr.Error()}
+			}
+			if closeErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
+			}
+			binaryPath := cronBinaryPath
+			if binaryPath == "" {
+				binaryPath, err = a.dependencies.Executable()
+				if err != nil {
+					return &commandError{stableCode: "internal_error", message: "resolve executable path: " + err.Error()}
+				}
+				binaryPath, err = filepath.Abs(binaryPath)
+				if err != nil {
+					return &commandError{stableCode: "internal_error", message: "resolve absolute executable path: " + err.Error()}
+				}
+			}
+			entry, err := scheduler.LocalCron(cfg, binaryPath, resolvedConfigPath, cronLogPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			if _, err := io.WriteString(a.dependencies.Stdout, entry); err != nil {
+				return &commandError{stableCode: "internal_error", message: "write cron suggestion: " + err.Error()}
+			}
+			return nil
+		},
+	}
+	cron.Flags().StringVar(&cronBinaryPath, "binary-path", "", "absolute path to the sb-heartbeat binary")
+	cron.Flags().StringVar(&cronLogPath, "log-path", "", "optional absolute path for appended stdout and stderr")
+	parent.AddCommand(github, cron)
 	return parent
 }
 
@@ -472,6 +530,21 @@ func generatedFileCommandError(err error, prefix string) *commandError {
 		stableCode = "invalid_invocation"
 	}
 	return &commandError{stableCode: stableCode, message: prefix + err.Error()}
+}
+
+func validateDistinctOutputPaths(paths []string) error {
+	seen := make(map[string]string, len(paths))
+	for _, outputPath := range paths {
+		resolved, err := filepath.Abs(outputPath)
+		if err != nil {
+			return fmt.Errorf("resolve output path %q: %w", outputPath, err)
+		}
+		if previous, exists := seen[resolved]; exists {
+			return fmt.Errorf("generated outputs must be different files: %s and %s", previous, outputPath)
+		}
+		seen[resolved] = outputPath
+	}
+	return nil
 }
 
 func currentVersion() string {
