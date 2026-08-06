@@ -164,7 +164,7 @@ func TestReleaseFixtureSetupAndScheduledHeartbeatAreSafe(t *testing.T) {
 		"workflow_dispatch:",
 		"if: vars.SB_HEARTBEAT_RELEASE_FIXTURE_ENABLED == 'true'",
 		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-		"SB_HEARTBEAT_VERSION: v0.1.0",
+		"SB_HEARTBEAT_VERSION: v0.1.1",
 		"sha256sum --check --strict",
 		"SB_HEARTBEAT_RELEASE_FIXTURE_URL: ${{ vars.SB_HEARTBEAT_RELEASE_FIXTURE_URL }}",
 		"SB_HEARTBEAT_RELEASE_FIXTURE_API_KEY: ${{ secrets.SB_HEARTBEAT_RELEASE_FIXTURE_API_KEY }}",

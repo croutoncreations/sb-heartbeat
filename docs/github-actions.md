@@ -3,7 +3,7 @@
 Generate the workflow from a versioned SB Heartbeat release:
 
 ```bash
-sb-heartbeat install github --sb-heartbeat-version v0.1.0
+sb-heartbeat install github --sb-heartbeat-version v0.1.1
 ```
 
 Apply the generated install migration and run `sb-heartbeat doctor` successfully
