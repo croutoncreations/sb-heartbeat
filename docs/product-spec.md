@@ -919,6 +919,21 @@ response bodies are never copied, and only `2xx` is success. Delivery or state
 failures are process-wide internal failures. This version sends failure events
 only, not recovery notifications.
 
+### 13.5 Prometheus textfile metrics
+
+`run` and `doctor` optionally accept `--metrics PATH`. After a complete result
+set, the CLI atomically replaces a Prometheus text exposition file containing
+only the latest run. Gauges cover run success and completion time plus
+per-project health, stable status, attempts, and optional latency and HTTP
+status. Project name and the finite stable status set are the only labels.
+URLs, credentials, bodies, webhook values, and diagnostic messages are never
+written. Failed checks still write metrics before returning exit code `1`;
+write failure returns `3`. The CLI does not host or push metrics and refuses
+path collisions with configuration, history, or notification state, including
+aliases through symlinked directories and case-insensitive macOS paths. Metrics
+export is unavailable on Windows because atomic replacement cannot be
+guaranteed; requesting it fails before network access.
+
 ## 14. GitHub Actions integration
 
 `sb-heartbeat install github` generates `.github/workflows/sb-heartbeat.yml` with:
@@ -1337,7 +1352,7 @@ verify provenance.
 - [x] Local status history with atomic writes and no sensitive data.
 - [x] Richer GitHub annotations and optional durable result artifacts.
 - [x] Notifications after configurable repeated failures.
-- [ ] Prometheus or OpenTelemetry-compatible metrics export.
+- [x] Prometheus-compatible atomic textfile metrics export.
 - [ ] Optional durable backends such as Cloudflare KV.
 
 ### Lifecycle and inventory

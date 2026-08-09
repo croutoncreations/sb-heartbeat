@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -387,6 +388,132 @@ func TestRunAppendsSanitizedBoundedHistory(t *testing.T) {
 	}
 	if err := json.Unmarshal(contents, &document); err != nil || len(document.Runs) != 2 {
 		t.Fatalf("history runs = %d, err = %v, history = %s", len(document.Runs), err, contents)
+	}
+}
+
+func TestRunWritesPrometheusMetricsForFailedHeartbeat(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	metricsPath := filepath.Join(dir, "metrics", "sb-heartbeat.prom")
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_publishable_abcdefghijklmnopqrstuv_12345678",
+	}, result: []heartbeat.Result{{
+		Name: "first", Status: heartbeat.UnexpectedResponse, Attempts: 2,
+		Error: &heartbeat.Error{Code: heartbeat.UnexpectedResponse, Message: "private diagnostic"},
+	}}}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--metrics", metricsPath}, h.dependencies()); code != 1 {
+		t.Fatalf("code=%d stderr=%q", code, h.stderr.String())
+	}
+	contents, err := os.ReadFile(metricsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(contents), `sb_heartbeat_project_status{project="first",status="unexpected_response"} 1`) || strings.Contains(string(contents), "private diagnostic") {
+		t.Fatalf("metrics=%q", contents)
+	}
+}
+
+func TestRunRejectsMetricsPathCollisionsBeforeNetwork(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	historyPath := filepath.Join(dir, "history.json")
+	statePath := filepath.Join(dir, "state.json")
+	for name, args := range map[string][]string{
+		"configuration": {"--metrics", path},
+		"history":       {"--history", historyPath, "--metrics", historyPath},
+		"state":         {"--notification-state", statePath, "--notification-webhook-env", "WEBHOOK", "--metrics", statePath},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := &harness{env: map[string]string{"WEBHOOK": "https://hooks.example.com/path"}}
+			command := append([]string{"--config", path, "run"}, args...)
+			if code := cli.Execute(context.Background(), command, h.dependencies()); code != 2 || h.called {
+				t.Fatalf("code=%d called=%v stderr=%q", code, h.called, h.stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunRejectsMetricsConfigurationCollisionThroughSymlinkedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	realDirectory := filepath.Join(dir, "real")
+	if err := os.Mkdir(realDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := writeConfig(t, realDirectory, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	linkedDirectory := filepath.Join(dir, "linked")
+	if err := os.Symlink(realDirectory, linkedDirectory); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{}
+	metricsPath := filepath.Join(linkedDirectory, filepath.Base(path))
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--metrics", metricsPath}, h.dependencies()); code != 2 || h.called {
+		t.Fatalf("code=%d called=%v stderr=%q", code, h.called, h.stderr.String())
+	}
+}
+
+func TestRunRejectsMetricsConfigurationCollisionWithCaseVariantAlias(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	caseVariant := filepath.Join(filepath.Dir(path), strings.ToUpper(filepath.Base(path)))
+	variantInfo, err := os.Stat(caseVariant)
+	if err != nil {
+		t.Skip("test volume is case-sensitive")
+	}
+	originalInfo, err := os.Stat(path)
+	if err != nil || !os.SameFile(originalInfo, variantInfo) {
+		t.Skip("case variant does not alias the configuration on this volume")
+	}
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--metrics", caseVariant}, h.dependencies()); code != 2 || h.called {
+		t.Fatalf("code=%d called=%v stderr=%q", code, h.called, h.stderr.String())
+	}
+}
+
+func TestRunRejectsMetricsBeforeNetworkOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific atomic replacement contract")
+	}
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--metrics", filepath.Join(dir, "metrics.prom")}, h.dependencies()); code != 2 || h.called {
+		t.Fatalf("code=%d called=%v stderr=%q", code, h.called, h.stderr.String())
+	}
+}
+
+func TestMetricsWriteFailureUsesSanitizedExitThree(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("metrics are unavailable on Windows")
+	}
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	target := filepath.Join(dir, "target.prom")
+	if err := os.WriteFile(target, []byte("unchanged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metricsPath := filepath.Join(dir, "metrics.prom")
+	if err := os.Symlink(target, metricsPath); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_publishable_abcdefghijklmnopqrstuv_12345678",
+	}}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--output", "json", "--metrics", metricsPath}, h.dependencies()); code != 3 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, h.stdout.String(), h.stderr.String())
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(h.stdout.Bytes(), &envelope); err != nil || envelope.Error.Code != "internal_error" || strings.Contains(h.stdout.String(), "unchanged") {
+		t.Fatalf("output=%q envelope=%+v err=%v", h.stdout.String(), envelope, err)
+	}
+	contents, err := os.ReadFile(target)
+	if err != nil || string(contents) != "unchanged" {
+		t.Fatalf("symlink target changed: %q err=%v", contents, err)
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/croutoncreations/sb-heartbeat/internal/fileutil"
 	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
 	"github.com/croutoncreations/sb-heartbeat/internal/history"
+	"github.com/croutoncreations/sb-heartbeat/internal/metrics"
 	"github.com/croutoncreations/sb-heartbeat/internal/migration"
 	"github.com/croutoncreations/sb-heartbeat/internal/notification"
 	"github.com/croutoncreations/sb-heartbeat/internal/output"
@@ -162,13 +163,14 @@ func (a *app) runCommand(doctor bool) *cobra.Command {
 	var selectedProject string
 	var historyPath string
 	var historyLimit string
+	var metricsPath string
 	var notificationState, notificationWebhookEnv, notifyAfter string
 	command := &cobra.Command{
 		Use:   name,
 		Short: short,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.executeChecks(cmd.Context(), selectedProject, doctor, historyPath, historyLimit, cmd.Flags().Changed("history-limit"), notificationOptions{
+			return a.executeChecks(cmd.Context(), selectedProject, doctor, historyPath, historyLimit, cmd.Flags().Changed("history-limit"), metricsPath, notificationOptions{
 				statePath: notificationState, webhookEnv: notificationWebhookEnv,
 				thresholdText: notifyAfter, thresholdChanged: cmd.Flags().Changed("notify-after"),
 			})
@@ -178,16 +180,21 @@ func (a *app) runCommand(doctor bool) *cobra.Command {
 	command.Flags().StringVar(&a.outputMode, "output", "", "output format: text or json")
 	command.Flags().StringVar(&historyPath, "history", "", "atomically append sanitized results to this local JSON file")
 	command.Flags().StringVar(&historyLimit, "history-limit", "100", "maximum retained history runs (1-1000; requires --history)")
+	command.Flags().StringVar(&metricsPath, "metrics", "", "atomically replace a Prometheus textfile with sanitized current results")
 	command.Flags().StringVar(&notificationState, "notification-state", "", "private local state file for repeated-failure notifications")
 	command.Flags().StringVar(&notificationWebhookEnv, "notification-webhook-env", "", "environment variable containing the HTTPS notification webhook URL")
 	command.Flags().StringVar(&notifyAfter, "notify-after", "3", "notify after this many consecutive failures (1-100; requires notification state and webhook)")
 	return command
 }
 
-func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor bool, historyPath, historyLimitText string, historyLimitSet bool, notify notificationOptions) error {
+func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor bool, historyPath, historyLimitText string, historyLimitSet bool, metricsPath string, notify notificationOptions) error {
 	resolvedConfigPath, err := filepath.Abs(a.configPath)
 	if err != nil {
 		return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
+	}
+	configIdentity, err := targetIdentity(resolvedConfigPath)
+	if err != nil {
+		return &commandError{stableCode: "invalid_configuration", message: "resolve configuration identity: " + err.Error()}
 	}
 	file, err := os.Open(resolvedConfigPath)
 	if err != nil {
@@ -217,6 +224,7 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		return &commandError{stableCode: "invalid_invocation", message: fmt.Sprintf("history limit must be an integer between 1 and %d", history.MaxRuns)}
 	}
 	resolvedHistoryPath := ""
+	historyIdentity := ""
 	if historyPath != "" {
 		if runtime.GOOS == "windows" {
 			return &commandError{stableCode: "invalid_invocation", message: "local history is unavailable on Windows because atomic replacement cannot be guaranteed"}
@@ -225,8 +233,30 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		if err != nil {
 			return &commandError{stableCode: "invalid_invocation", message: "resolve history path: " + err.Error()}
 		}
-		if resolvedHistoryPath == resolvedConfigPath {
+		historyIdentity, err = targetIdentity(resolvedHistoryPath)
+		if err != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve history identity: " + err.Error()}
+		}
+		if historyIdentity == configIdentity {
 			return &commandError{stableCode: "invalid_invocation", message: "history path must not replace the configuration file"}
+		}
+	}
+	resolvedMetricsPath := ""
+	metricsIdentity := ""
+	if metricsPath != "" {
+		if runtime.GOOS == "windows" {
+			return &commandError{stableCode: "invalid_invocation", message: "Prometheus metrics are unavailable on Windows because atomic replacement cannot be guaranteed"}
+		}
+		resolvedMetricsPath, err = filepath.Abs(metricsPath)
+		if err != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve metrics path: " + err.Error()}
+		}
+		metricsIdentity, err = targetIdentity(resolvedMetricsPath)
+		if err != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve metrics identity: " + err.Error()}
+		}
+		if targetIdentitiesCollide(metricsIdentity, configIdentity) || (historyIdentity != "" && targetIdentitiesCollide(metricsIdentity, historyIdentity)) {
+			return &commandError{stableCode: "invalid_invocation", message: "metrics path must not replace the configuration or history file"}
 		}
 	}
 	configuredNotifications := notify.statePath != "" || notify.webhookEnv != "" || notify.thresholdChanged
@@ -250,8 +280,13 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		if err != nil {
 			return &commandError{stableCode: "invalid_invocation", message: "resolve notification state path: " + err.Error()}
 		}
-		if resolvedNotificationState == resolvedConfigPath || (resolvedHistoryPath != "" && resolvedNotificationState == resolvedHistoryPath) {
-			return &commandError{stableCode: "invalid_invocation", message: "notification state path must not replace the configuration or history file"}
+		notificationIdentity, identityErr := targetIdentity(resolvedNotificationState)
+		if identityErr != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve notification state identity: " + identityErr.Error()}
+		}
+		if targetIdentitiesCollide(notificationIdentity, configIdentity) || (historyIdentity != "" && targetIdentitiesCollide(notificationIdentity, historyIdentity)) ||
+			(metricsIdentity != "" && targetIdentitiesCollide(notificationIdentity, metricsIdentity)) {
+			return &commandError{stableCode: "invalid_invocation", message: "notification state path must not replace the configuration, history, or metrics file"}
 		}
 		var exists bool
 		webhookURL, exists = a.dependencies.LookupEnv(notify.webhookEnv)
@@ -298,6 +333,11 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 	if resolvedHistoryPath != "" {
 		if err := history.Append(resolvedHistoryPath, history.Run{StartedAt: started, FinishedAt: finished, Results: results}, historyLimit); err != nil {
 			return &commandError{stableCode: "internal_error", message: "record local history: " + err.Error()}
+		}
+	}
+	if resolvedMetricsPath != "" {
+		if err := metrics.WritePrometheus(resolvedMetricsPath, finished, results); err != nil {
+			return &commandError{stableCode: "internal_error", message: "write Prometheus metrics: " + err.Error()}
 		}
 	}
 	if configuredNotifications {
@@ -884,6 +924,50 @@ func validateDistinctOutputPaths(paths []string) error {
 		seen[resolved] = outputPath
 	}
 	return nil
+}
+
+func targetIdentity(absolutePath string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(absolutePath)
+	if err == nil {
+		return resolved, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+
+	directory := filepath.Dir(absolutePath)
+	missing := []string{filepath.Base(absolutePath)}
+	for {
+		resolvedDirectory, resolveErr := filepath.EvalSymlinks(directory)
+		if resolveErr == nil {
+			identity := resolvedDirectory
+			for index := len(missing) - 1; index >= 0; index-- {
+				identity = filepath.Join(identity, missing[index])
+			}
+			return identity, nil
+		}
+		if !errors.Is(resolveErr, os.ErrNotExist) {
+			return "", resolveErr
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			return "", resolveErr
+		}
+		missing = append(missing, filepath.Base(directory))
+		directory = parent
+	}
+}
+
+func targetIdentitiesCollide(left, right string) bool {
+	if left == right {
+		return true
+	}
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	if leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo) {
+		return true
+	}
+	return (runtime.GOOS == "darwin" || runtime.GOOS == "windows") && strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
 }
 
 func resolveWorkflowConfigPath(explicitPath, configPath, workflowPath string) (string, error) {

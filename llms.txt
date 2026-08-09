@@ -39,3 +39,4 @@ Agent safety contract:
 - [Stop heartbeats and uninstall](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/uninstall.md): Scheduler-first offboarding, shared-binding checks, guarded SQL generation, and archive handoff.
 - [Local status history](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/status-history.md): Opt-in bounded atomic snapshots with a deliberately sanitized schema.
 - [Repeated-failure notifications](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/notifications.md): Thresholded HTTPS webhook events backed by private, durable, sanitized local state.
+- [Prometheus metrics](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/metrics.md): Atomic sanitized current-result gauges for Prometheus textfile collectors.
