@@ -102,6 +102,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Local cron](docs/local-cron.md)
 - [Agent installation](docs/agent-install.md)
 - [Agent prompts](docs/agent-prompts.md)
+- [LLM and coding-agent index](llms.txt)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Uninstall](docs/uninstall.md)
 - [Release verification](docs/releasing.md)

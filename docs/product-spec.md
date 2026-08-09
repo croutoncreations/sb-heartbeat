@@ -2,7 +2,7 @@
 
 Status: Draft for implementation  
 Specification version: 0.3  
-Last updated: 2026-08-04
+Last updated: 2026-08-08
 
 ## 1. Product summary
 
@@ -1219,9 +1219,9 @@ without weakening that path.
 - [x] Shell completions for Bash, Zsh, Fish, and PowerShell.
 - [x] JSON Schema and editor integration.
 - [x] Per-binding GitHub variable or secret selection.
-- [ ] `llms.txt`; add `llms-full.txt` only if consumers demonstrate value.
+- [x] `llms.txt`; add `llms-full.txt` only if consumers demonstrate value.
 - [ ] Agent installation tests with at least two coding agents.
-- [ ] Copyable prompts without modifying downstream `AGENTS.md` files.
+- [x] Copyable prompts without modifying downstream `AGENTS.md` files.
 
 ## 23. Risks and mitigations
 

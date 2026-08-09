@@ -1,0 +1,35 @@
+# SB Heartbeat
+
+> A safety-focused CLI for keeping intentionally retained Supabase projects active with a fixed, read-only heartbeat.
+
+SB Heartbeat uses a Supabase project URL and a low-privilege publishable or legacy anon key. It never needs a database password, secret key, service-role key, or Management API token. The CLI generates guarded migration SQL, validates configuration and credentials before network access, and supports local or generated GitHub Actions execution.
+
+Agent safety contract:
+
+- Read and follow the downstream repository's existing instructions first.
+- Use an exact, checksum-verified release.
+- Configure environment-variable names, never credential values.
+- Generate migration SQL; never apply it without explicit authorization and the repository's established migration process.
+- Never modify a downstream repository's `AGENTS.md`, `CLAUDE.md`, or equivalent instruction files.
+- Never print, persist, or commit credential values.
+- Never use or request a database password, Supabase secret key, service-role key, or Management API token.
+- When the required low-privilege values are already available in the environment, run `doctor` before enabling a scheduler, then report all changed files and remaining manual steps.
+
+## Essential documentation
+
+- [README](https://github.com/croutoncreations/sb-heartbeat/blob/main/README.md): Purpose, installation methods, commands, and documentation index.
+- [Quickstart](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/quickstart.md): Smallest supported setup path for a person or agent.
+- [Configuration](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/configuration.md): Strict YAML contract, derived bindings, GitHub sources, runtime bounds, and editor schema.
+- [Security model](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/security.md): Least-privilege guarantees, credential rejection, fixed-query behavior, and threat boundaries.
+- [GitHub Actions](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/github-actions.md): Pinned workflow generation and safe repository binding setup.
+- [Troubleshooting](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/troubleshooting.md): Stable failures and corrective checks.
+- [Product specification](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/product-spec.md): Authoritative product behavior, acceptance criteria, and 1.0 roadmap.
+
+## Agent tasks
+
+- [Agent installation guide](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-install.md): Ordered installation procedure and prohibited actions.
+- [Copyable agent prompts](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-prompts.md): Prepare, verify, and local-cron tasks with bounded authority.
+
+## Optional
+
+- [Local cron](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/local-cron.md): Read-only cron suggestion generation, environment handling, logs, and monitoring.
