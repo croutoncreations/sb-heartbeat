@@ -41,6 +41,12 @@ func GitHub(cfg config.Config, version, configPath string) ([]byte, error) {
 	}
 	tmpl, err := template.New("github").Funcs(template.FuncMap{
 		"quote": strconv.Quote,
+		"githubContext": func(source string) string {
+			if source == config.GitHubSecret {
+				return "secrets"
+			}
+			return "vars"
+		},
 	}).Parse(githubWorkflowTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("parse GitHub workflow template: %w", err)
@@ -110,8 +116,8 @@ jobs:
       - name: Run heartbeats
         env:
 {{- range .Projects }}
-          {{ .URL.Env }}: ${{ "{{" }} vars.{{ .URL.Env }} {{ "}}" }}
-          {{ .APIKey.Env }}: ${{ "{{" }} secrets.{{ .APIKey.Env }} {{ "}}" }}
+          {{ .URL.Env }}: ${{ "{{" }} {{ githubContext .URL.GitHub }}.{{ .URL.Env }} {{ "}}" }}
+          {{ .APIKey.Env }}: ${{ "{{" }} {{ githubContext .APIKey.GitHub }}.{{ .APIKey.Env }} {{ "}}" }}
 {{- end }}
         shell: bash
         run: |

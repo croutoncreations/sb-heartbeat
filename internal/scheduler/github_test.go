@@ -74,6 +74,26 @@ func TestGitHubWorkflowIsPinnedAndChecksumVerified(t *testing.T) {
 	}
 }
 
+func TestGitHubWorkflowUsesConfiguredBindingSources(t *testing.T) {
+	cfg, err := config.New(config.Project{
+		Name:   "demo",
+		URL:    config.EnvReference{Env: "DEMO_URL", GitHub: "secret"},
+		APIKey: config.EnvReference{Env: "DEMO_KEY", GitHub: "variable"},
+	}, config.DefaultCron)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow, err := scheduler.GitHub(cfg, "v0.1.0", "sb-heartbeat.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(workflow)
+	if !strings.Contains(text, "DEMO_URL: ${{ secrets.DEMO_URL }}") ||
+		!strings.Contains(text, "DEMO_KEY: ${{ vars.DEMO_KEY }}") {
+		t.Fatalf("configured GitHub bindings missing\n%s", text)
+	}
+}
+
 func TestReleaseWorkflowUsesProtectedHostedEnvironment(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
 	if err != nil {

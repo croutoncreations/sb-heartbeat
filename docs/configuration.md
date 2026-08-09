@@ -16,6 +16,10 @@ scheduler:
   cron: 37 3,11,19 * * *
 projects:
   - name: demo
+    url:
+      github: variable
+    api_key:
+      github: secret
 ```
 
 Configuration is strict: unknown and duplicate YAML keys are rejected. The MVP
@@ -34,8 +38,9 @@ SB_HEARTBEAT_MY_APP_API_KEY
 ```
 
 These are binding names, not credential values. In generated GitHub workflows,
-the URL name is read from `vars` and the API-key name is read from `secrets`.
-Explicit names can reuse existing repository bindings.
+`github` selects `variable` (`vars.NAME`) or `secret` (`secrets.NAME`) for each
+binding. It defaults to `variable` for URLs and `secret` for API keys. Explicit
+names and sources can reuse existing repository bindings.
 
 ## Editor validation
 

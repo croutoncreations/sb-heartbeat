@@ -469,8 +469,10 @@ projects:
   - name: travally-staging
     url:
       env: TRAVALLY_SUPABASE_URL
+      github: variable
     api_key:
       env: TRAVALLY_SUPABASE_API_KEY
+      github: secret
 ```
 
 Configuration requirements:
@@ -483,6 +485,9 @@ Configuration requirements:
 - Suggested environment names normalize hyphens to underscores. Initialization
   rejects collisions after normalization, such as `a-b` and `a_b`.
 - Omitted `url.env` and `api_key.env` bindings use the suggested names below.
+- Omitted `url.github` and `api_key.github` bindings map to GitHub Actions
+  `variable` and `secret` storage respectively. Either binding can explicitly
+  select `variable` or `secret` to reuse an existing repository binding.
 - Durations and retry counts are bounded.
 - A published Draft 2020-12 JSON Schema mirrors configuration version 1 and is
   referenced by generated YAML through the standard YAML language-server
@@ -619,9 +624,9 @@ When initialization runs inside a Git repository, the interactive project-name
 prompt suggests a normalized form of the repository root directory name. The
 suggestion is only a local label and can be replaced. Interactive setup shows
 the exact derived URL and API-key environment names, labels their GitHub mapping
-as a repository variable and secret respectively, and allows either name to be
-overridden so an existing repository binding can be reused. Users can add more
-than one project before completing the wizard. Initialization does not query
+as a repository variable and secret respectively, and allows either name and
+storage source to be overridden so an existing repository binding can be
+reused. Users can add more than one project before completing the wizard. Initialization does not query
 GitHub for secret values and never requests a key value.
 
 Noninteractive setup supports every essential choice:
@@ -632,12 +637,16 @@ sb-heartbeat init \
   --project-name travally-staging \
   --url-env TRAVALLY_SUPABASE_URL \
   --api-key-env TRAVALLY_SUPABASE_API_KEY \
+  --url-github-source variable \
+  --api-key-github-source secret \
   --scheduler github \
   --cron "37 3,11,19 * * *"
 ```
 
 The `--url-env` and `--api-key-env` flags override the implicit names derived
-from the project name; they are optional when those defaults are suitable.
+from the project name. The `--url-github-source` and
+`--api-key-github-source` flags select `variable` or `secret`. All four flags
+are optional when the defaults are suitable.
 
 Initialization works outside Git repositories. Repository-specific generation
 is enabled only when applicable.
@@ -861,17 +870,18 @@ policy.
 - JSON execution output; and
 - a concise GitHub job summary.
 
-The MVP mapping is deterministic:
+The mapping is deterministic and configured per binding:
 
-- each configured URL environment name maps from the GitHub repository or
-  environment variable with the same name: `${{ vars.NAME }}`;
-- each configured API-key environment name maps from the GitHub repository or
-  environment secret with the same name: `${{ secrets.NAME }}`; and
+- `github: variable` maps the configured environment name from the GitHub
+  repository or environment variable with the same name: `${{ vars.NAME }}`;
+- `github: secret` maps it from the GitHub repository or environment secret
+  with the same name: `${{ secrets.NAME }}`;
+- omitted sources default to `variable` for URLs and `secret` for API keys; and
 - the generator rejects duplicate or colliding environment names rather than
   silently sharing a binding.
 
-Users who prefer a different GitHub store can edit the generated workflow or
-use explicit future generator options; the MVP keeps one predictable mapping.
+The wizard and noninteractive initializer expose the source choice without
+requesting or storing binding values.
 
 The workflow checks out the repository because `sb-heartbeat run` reads the tracked
 `sb-heartbeat.yaml`. Checkout and any other third-party action are pinned to a full
@@ -1208,6 +1218,7 @@ without weakening that path.
 - [ ] Signed artifacts and build provenance.
 - [x] Shell completions for Bash, Zsh, Fish, and PowerShell.
 - [x] JSON Schema and editor integration.
+- [x] Per-binding GitHub variable or secret selection.
 - [ ] `llms.txt`; add `llms-full.txt` only if consumers demonstrate value.
 - [ ] Agent installation tests with at least two coding agents.
 - [ ] Copyable prompts without modifying downstream `AGENTS.md` files.

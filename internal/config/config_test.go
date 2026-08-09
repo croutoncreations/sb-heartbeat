@@ -102,6 +102,34 @@ projects:
 	}
 }
 
+func TestLoadDefaultsAndPreservesGitHubBindingSources(t *testing.T) {
+	defaulted, err := config.Load(strings.NewReader(`
+version: 1
+projects:
+  - name: demo
+`))
+	if err != nil {
+		t.Fatalf("Load(defaulted) error = %v", err)
+	}
+	if defaulted.Projects[0].URL.GitHub != "variable" || defaulted.Projects[0].APIKey.GitHub != "secret" {
+		t.Fatalf("default GitHub sources = %+v", defaulted.Projects[0])
+	}
+
+	explicit, err := config.Load(strings.NewReader(`
+version: 1
+projects:
+  - name: demo
+    url: {env: CUSTOM_URL, github: secret}
+    api_key: {env: CUSTOM_KEY, github: variable}
+`))
+	if err != nil {
+		t.Fatalf("Load(explicit) error = %v", err)
+	}
+	if explicit.Projects[0].URL.GitHub != "secret" || explicit.Projects[0].APIKey.GitHub != "variable" {
+		t.Fatalf("explicit GitHub sources = %+v", explicit.Projects[0])
+	}
+}
+
 func TestNewProjectsAppliesImplicitBindingsToEveryProject(t *testing.T) {
 	cfg, err := config.NewProjects([]config.Project{{Name: "first"}, {Name: "second-project"}}, "")
 	if err != nil {
@@ -199,7 +227,30 @@ func TestPublishedSchemaCoversStrictConfigurationContract(t *testing.T) {
 		if env["pattern"] != "^$|^[A-Z_][A-Z0-9_]{0,126}$" {
 			t.Fatalf("%s env pattern = %v", binding, env["pattern"])
 		}
+		github := schemaObject(t, schemaObject(t, ref, "properties"), "github")
+		if got := github["enum"]; !schemaArrayContains(got, "variable", "secret", "", nil) {
+			t.Fatalf("%s github enum = %v", binding, got)
+		}
 	}
+}
+
+func TestPublishedSchemaAcceptsConfiguredGitHubBindingSources(t *testing.T) {
+	validatePublishedSchema(t, `
+version: 1
+projects:
+  - name: demo
+    url: {env: DEMO_URL, github: secret}
+    api_key: {env: DEMO_KEY, github: variable}
+`)
+}
+
+func TestPublishedSchemaRejectsUnknownGitHubBindingSource(t *testing.T) {
+	validatePublishedSchemaError(t, `
+version: 1
+projects:
+  - name: demo
+    url: {github: artifact}
+`)
 }
 
 func TestPublishedSchemaAcceptsCLIAcceptedExplicitOmissions(t *testing.T) {
@@ -359,6 +410,7 @@ func TestLoadRejectsInvalidNamesBindingsAndBounds(t *testing.T) {
 	tests := map[string]string{
 		"project name":      strings.Replace(validConfig, "name: demo", "name: Demo!", 1),
 		"environment":       strings.Replace(validConfig, "DEMO_SUPABASE_URL", "demo-url", 1),
+		"github source":     strings.Replace(validConfig, "env: DEMO_SUPABASE_URL", "env: DEMO_SUPABASE_URL\n      github: artifact", 1),
 		"duplicate binding": strings.Replace(validConfig, "DEMO_SUPABASE_API_KEY", "DEMO_SUPABASE_URL", 1),
 		"timeout":           strings.Replace(validConfig, "timeout: 10s", "timeout: 61s", 1),
 		"retries":           strings.Replace(validConfig, "retries: 1", "retries: 4", 1),

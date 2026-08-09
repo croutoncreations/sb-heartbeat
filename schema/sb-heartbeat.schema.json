@@ -93,6 +93,12 @@
                 "description": "Environment variable containing the project URL.",
                 "type": ["string", "null"],
                 "pattern": "^$|^[A-Z_][A-Z0-9_]{0,126}$"
+              },
+              "github": {
+                "description": "GitHub Actions storage source for this binding. Defaults to a repository variable.",
+                "type": ["string", "null"],
+                "enum": ["variable", "secret", "", null],
+                "default": "variable"
               }
             }
           },
@@ -105,6 +111,12 @@
                 "description": "Environment variable containing the low-privilege API key.",
                 "type": ["string", "null"],
                 "pattern": "^$|^[A-Z_][A-Z0-9_]{0,126}$"
+              },
+              "github": {
+                "description": "GitHub Actions storage source for this binding. Defaults to a repository secret.",
+                "type": ["string", "null"],
+                "enum": ["variable", "secret", "", null],
+                "default": "secret"
               }
             }
           }

@@ -65,7 +65,7 @@ func (h *harness) dependencies() cli.Dependencies {
 func TestInteractiveInitPromptsOnlyForNonSecretMetadata(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sb-heartbeat.yaml")
-	h := &harness{stdin: strings.NewReader("demo\nDEMO_URL\nDEMO_KEY\n\n")}
+	h := &harness{stdin: strings.NewReader("demo\nDEMO_URL\nDEMO_KEY\n\n\n\n\n\n")}
 	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, h.dependencies())
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
@@ -88,7 +88,7 @@ func TestInteractiveInitGeneratesMigrationAndExplainsRequiredNextSteps(t *testin
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "sb-heartbeat.yaml")
 	migrationPath := filepath.Join(dir, "sb-heartbeat.sql")
-	h := &harness{stdin: strings.NewReader("demo\n\n\n\n\n\n")}
+	h := &harness{stdin: strings.NewReader("demo\n\n\n\n\n\n\n\n")}
 
 	code := cli.Execute(context.Background(), []string{"init", "--output-path", configPath}, h.dependencies())
 	if code != 0 {
@@ -130,7 +130,7 @@ func TestInteractiveInitSuggestsRepositoryNameAndExplainsBindings(t *testing.T) 
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 
 	path := filepath.Join(dir, "sb-heartbeat.yaml")
-	h := &harness{stdin: strings.NewReader("\n\n\n\n\n")}
+	h := &harness{stdin: strings.NewReader("\n\n\n\n\n\n\n\n")}
 	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, h.dependencies())
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %q, stdout = %q", code, h.stderr.String(), h.stdout.String())
@@ -162,7 +162,7 @@ func TestInteractiveInitSuggestsRepositoryNameAndExplainsBindings(t *testing.T) 
 func TestInteractiveInitCollectsMultipleProjects(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sb-heartbeat.yaml")
-	h := &harness{stdin: strings.NewReader("first\n\n\ny\nsecond\n\n\nn\n\n")}
+	h := &harness{stdin: strings.NewReader("first\n\n\n\n\ny\nsecond\n\n\n\n\nn\n\n\n")}
 	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, h.dependencies())
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %q, stdout = %q", code, h.stderr.String(), h.stdout.String())
@@ -189,6 +189,37 @@ func TestInteractiveInitCollectsMultipleProjects(t *testing.T) {
 		if !strings.Contains(output, expected) {
 			t.Errorf("output missing %q: %q", expected, output)
 		}
+	}
+}
+
+func TestInteractiveInitConfiguresGitHubBindingSources(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
+	h := &harness{stdin: strings.NewReader("demo\n\n\nsecret\nvariable\nn\n\n\n")}
+	code := cli.Execute(context.Background(), []string{"init", "--output-path", path}, h.dependencies())
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q, stdout = %q", code, h.stderr.String(), h.stdout.String())
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, loadErr := config.Load(file)
+	closeErr := file.Close()
+	if loadErr != nil || closeErr != nil {
+		t.Fatalf("load error = %v, close error = %v", loadErr, closeErr)
+	}
+	project := cfg.Projects[0]
+	if project.URL.GitHub != "secret" || project.APIKey.GitHub != "variable" {
+		t.Fatalf("project = %+v", project)
+	}
+	for _, expected := range []string{"GitHub secret: " + project.URL.Env, "GitHub variable: " + project.APIKey.Env} {
+		if !strings.Contains(h.stdout.String(), expected) {
+			t.Errorf("output missing %q: %q", expected, h.stdout.String())
+		}
+	}
+	if !strings.Contains(h.stdout.String(), "API keys stored as GitHub variables are readable and unmasked") {
+		t.Fatalf("output lacks variable visibility warning: %q", h.stdout.String())
 	}
 }
 
@@ -555,6 +586,44 @@ func TestNonInteractiveInitUsesDerivedEnvironmentBindings(t *testing.T) {
 	project := cfg.Projects[0]
 	if project.URL.Env != "SB_HEARTBEAT_MY_STAGE_URL" || project.APIKey.Env != "SB_HEARTBEAT_MY_STAGE_API_KEY" {
 		t.Fatalf("project = %+v", project)
+	}
+}
+
+func TestNonInteractiveInitConfiguresGitHubBindingSources(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sb-heartbeat.yaml")
+	workflow := filepath.Join(dir, ".github", "workflows", "sb-heartbeat.yml")
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", path,
+		"--project-name", "demo", "--url-env", "DEMO_URL", "--api-key-env", "DEMO_KEY",
+		"--url-github-source", "secret", "--api-key-github-source", "variable",
+		"--scheduler", "github", "--workflow-output", workflow,
+		"--sb-heartbeat-version", "v0.1.0",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("init code = %d, stderr = %q", code, h.stderr.String())
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, loadErr := config.Load(file)
+	closeErr := file.Close()
+	if loadErr != nil || closeErr != nil {
+		t.Fatalf("load error = %v, close error = %v", loadErr, closeErr)
+	}
+	project := cfg.Projects[0]
+	if project.URL.GitHub != "secret" || project.APIKey.GitHub != "variable" {
+		t.Fatalf("project = %+v", project)
+	}
+	data, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := string(data); !strings.Contains(text, "DEMO_URL: ${{ secrets.DEMO_URL }}") ||
+		!strings.Contains(text, "DEMO_KEY: ${{ vars.DEMO_KEY }}") {
+		t.Fatalf("workflow = %s", text)
 	}
 }
 

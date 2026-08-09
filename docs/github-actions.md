@@ -20,7 +20,7 @@ generated `.github/workflows/` location. Use `--workflow-config` when the
 workflow and configuration output paths do not reveal the intended repository
 layout.
 
-For each configured project:
+By default, for each configured project:
 
 - Create the URL environment name as a GitHub Actions variable.
 - Create the API-key environment name as a GitHub Actions secret.
@@ -39,9 +39,14 @@ project-specific publishable-key name. Those bindings might instead live in a
 hosting provider and not in GitHub. Inspect names without reading values:
 
 ```bash
-gh variable list
-gh secret list
+gh variable list --json name --jq '.[].name'
+gh secret list --json name --jq '.[].name'
 ```
+
+GitHub variables are readable in repository settings and are not masked in
+workflow logs. Prefer a secret for any API key, even a low-privilege publishable
+or legacy anon key. Select `github: variable` for an API key only when that
+visibility is a deliberate repository-owner choice.
 
 To reuse existing GitHub names, enter them when the wizard offers the derived
 defaults, or configure them explicitly:
@@ -51,19 +56,21 @@ projects:
   - name: my-app
     url:
       env: NEXT_PUBLIC_SUPABASE_URL
+      github: secret
     api_key:
       env: SUPABASE_ANON_KEY
+      github: secret
 ```
 
-The generated workflow will then reference `vars.NEXT_PUBLIC_SUPABASE_URL` and
-`secrets.SUPABASE_ANON_KEY`. If an existing URL is stored as a secret rather
-than a variable, either create a repository variable for it or deliberately
-edit the generated workflow; the default generator keeps the mapping explicit
-and predictable.
+The generated workflow will then reference `secrets.NEXT_PUBLIC_SUPABASE_URL`
+and `secrets.SUPABASE_ANON_KEY`. Each binding's optional `github` field accepts
+only `variable` or `secret`; omitted fields preserve the safe URL-variable and
+API-key-secret defaults. The wizard prompts for both sources, and noninteractive
+setup exposes `--url-github-source` and `--api-key-github-source`.
 
 ### Add bindings with GitHub CLI
 
-Repository URLs are not credentials and can be added as variables:
+Repository URLs are not credentials and can be added as variables by default:
 
 ```bash
 gh variable set SB_HEARTBEAT_MY_APP_URL \
@@ -77,6 +84,10 @@ does not appear in command history:
 gh secret set SB_HEARTBEAT_MY_APP_API_KEY
 ```
 
+When configuration deliberately reverses either source, use `gh secret set`
+for a `secret` binding and `gh variable set` for a `variable` binding. Avoid
+passing values in command arguments; use the protected prompt or standard input.
+
 Do not add a database connection URL, database password, secret key, or
 service-role key. Scheduled heartbeats need only the hosted project URL and one
 low-privilege client key.
@@ -85,9 +96,9 @@ low-privilege client key.
 
 1. Open the downstream repository on GitHub and select **Settings**.
 2. Select **Secrets and variables**, then **Actions**.
-3. On **Variables**, create the URL binding printed by SB Heartbeat.
-4. On **Secrets**, create the API-key binding printed by SB Heartbeat.
-5. Repeat the variable/secret pair for each configured Supabase project.
+3. On **Variables** or **Secrets**, create each binding in the store printed by
+   SB Heartbeat.
+4. Repeat for each configured Supabase project.
 
 The values belong in the downstream application repository, not in the SB
 Heartbeat development repository.

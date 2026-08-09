@@ -287,7 +287,7 @@ func runProjects(ctx context.Context, projects []heartbeat.Project, defaults con
 
 func (a *app) initCommand() *cobra.Command {
 	var nonInteractive, force bool
-	var outputPath, projectName, urlEnv, keyEnv, cron, migrationOutput string
+	var outputPath, projectName, urlEnv, keyEnv, urlGitHubSource, keyGitHubSource, cron, migrationOutput string
 	var schedulerName, workflowOutput, workflowConfig, sbHeartbeatVersion string
 	command := &cobra.Command{
 		Use:   "init",
@@ -301,7 +301,7 @@ func (a *app) initCommand() *cobra.Command {
 					projectName = suggestedRepositoryProjectName()
 				}
 				for {
-					project, err := promptProject(reader, a.dependencies.Stdout, projectName, urlEnv, keyEnv)
+					project, err := promptProject(reader, a.dependencies.Stdout, projectName, urlEnv, keyEnv, urlGitHubSource, keyGitHubSource)
 					if err != nil {
 						return promptCommandError(err)
 					}
@@ -331,7 +331,9 @@ func (a *app) initCommand() *cobra.Command {
 					return &commandError{stableCode: "missing_input", message: "project-name is required"}
 				}
 				projects = append(projects, config.Project{
-					Name: projectName, URL: config.EnvReference{Env: urlEnv}, APIKey: config.EnvReference{Env: keyEnv},
+					Name:   projectName,
+					URL:    config.EnvReference{Env: urlEnv, GitHub: urlGitHubSource},
+					APIKey: config.EnvReference{Env: keyEnv, GitHub: keyGitHubSource},
 				})
 			}
 			cfg, err := config.NewProjects(projects, cron)
@@ -406,6 +408,8 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&projectName, "project-name", "", "project name")
 	command.Flags().StringVar(&urlEnv, "url-env", "", "environment variable containing the project URL")
 	command.Flags().StringVar(&keyEnv, "api-key-env", "", "environment variable containing the low-privilege API key")
+	command.Flags().StringVar(&urlGitHubSource, "url-github-source", config.GitHubVariable, "GitHub Actions source for the project URL: variable or secret")
+	command.Flags().StringVar(&keyGitHubSource, "api-key-github-source", config.GitHubSecret, "GitHub Actions source for the API key: variable or secret")
 	command.Flags().StringVar(&cron, "cron", config.DefaultCron, "scheduler cron expression")
 	command.Flags().StringVar(&migrationOutput, "migration-output", "", "also write the install migration to this exact path")
 	command.Flags().StringVar(&schedulerName, "scheduler", "", "also generate a scheduler: github")
@@ -423,13 +427,13 @@ func initNextSteps(migrationOutput string) string {
 	} else {
 		builder.WriteString("  1. Generate, review, and apply the install migration through your normal migration process.\n")
 	}
-	builder.WriteString("  2. Configure the printed URL variable and API-key secret.\n")
+	builder.WriteString("  2. Configure the printed GitHub repository bindings.\n")
 	builder.WriteString("  3. Run sb-heartbeat doctor before running or enabling a scheduler.\n")
 	builder.WriteString("SB Heartbeat never applies migrations or stores database credentials.\n")
 	return builder.String()
 }
 
-func promptProject(reader *bufio.Reader, writer io.Writer, projectName, urlEnv, keyEnv string) (config.Project, error) {
+func promptProject(reader *bufio.Reader, writer io.Writer, projectName, urlEnv, keyEnv, urlGitHubSource, keyGitHubSource string) (config.Project, error) {
 	var err error
 	if projectName, err = prompt(reader, writer, "Project name", projectName); err != nil {
 		return config.Project{}, err
@@ -438,10 +442,10 @@ func promptProject(reader *bufio.Reader, writer io.Writer, projectName, urlEnv, 
 	if _, err := fmt.Fprintf(writer, "Bindings for %s (press Enter to accept or type an existing name):\n", projectName); err != nil {
 		return config.Project{}, &promptOutputError{err: fmt.Errorf("write project binding guidance: %w", err)}
 	}
-	if _, err := fmt.Fprintln(writer, "  GitHub variable:", urlEnv); err != nil {
+	if _, err := fmt.Fprintf(writer, "  GitHub %s: %s\n", urlGitHubSource, urlEnv); err != nil {
 		return config.Project{}, &promptOutputError{err: fmt.Errorf("write project URL binding guidance: %w", err)}
 	}
-	if _, err := fmt.Fprintln(writer, "  GitHub secret:", keyEnv); err != nil {
+	if _, err := fmt.Fprintf(writer, "  GitHub %s: %s\n", keyGitHubSource, keyEnv); err != nil {
 		return config.Project{}, &promptOutputError{err: fmt.Errorf("write project API-key binding guidance: %w", err)}
 	}
 	if urlEnv, err = prompt(reader, writer, "Project URL environment variable", urlEnv); err != nil {
@@ -450,8 +454,16 @@ func promptProject(reader *bufio.Reader, writer io.Writer, projectName, urlEnv, 
 	if keyEnv, err = prompt(reader, writer, "API key environment variable", keyEnv); err != nil {
 		return config.Project{}, err
 	}
+	if urlGitHubSource, err = prompt(reader, writer, "Project URL GitHub source (variable or secret)", urlGitHubSource); err != nil {
+		return config.Project{}, err
+	}
+	if keyGitHubSource, err = prompt(reader, writer, "API key GitHub source (variable or secret)", keyGitHubSource); err != nil {
+		return config.Project{}, err
+	}
 	return config.Project{
-		Name: projectName, URL: config.EnvReference{Env: urlEnv}, APIKey: config.EnvReference{Env: keyEnv},
+		Name:   projectName,
+		URL:    config.EnvReference{Env: urlEnv, GitHub: urlGitHubSource},
+		APIKey: config.EnvReference{Env: keyEnv, GitHub: keyGitHubSource},
 	}, nil
 }
 
@@ -465,9 +477,14 @@ func promptCommandError(err error) *commandError {
 
 func githubBindingSummary(projects []config.Project) string {
 	var summary strings.Builder
+	apiKeyVariable := false
 	summary.WriteString("\nGitHub repository bindings (values are not stored by SB Heartbeat):\n")
 	for _, project := range projects {
-		fmt.Fprintf(&summary, "%s:\n  GitHub variable: %s\n  GitHub secret: %s\n", project.Name, project.URL.Env, project.APIKey.Env)
+		fmt.Fprintf(&summary, "%s:\n  GitHub %s: %s\n  GitHub %s: %s\n", project.Name, project.URL.GitHub, project.URL.Env, project.APIKey.GitHub, project.APIKey.Env)
+		apiKeyVariable = apiKeyVariable || project.APIKey.GitHub == config.GitHubVariable
+	}
+	if apiKeyVariable {
+		summary.WriteString("Warning: API keys stored as GitHub variables are readable and unmasked; prefer secrets unless this is deliberate.\n")
 	}
 	return summary.String()
 }

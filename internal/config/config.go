@@ -19,6 +19,8 @@ const (
 	DefaultRetries     = 1
 	DefaultConcurrency = 4
 	SchemaURL          = "https://raw.githubusercontent.com/croutoncreations/sb-heartbeat/main/schema/sb-heartbeat.schema.json"
+	GitHubVariable     = "variable"
+	GitHubSecret       = "secret"
 )
 
 var (
@@ -52,7 +54,8 @@ type Project struct {
 }
 
 type EnvReference struct {
-	Env string
+	Env    string `yaml:"env,omitempty"`
+	GitHub string `yaml:"github,omitempty"`
 }
 
 type wireConfig struct {
@@ -226,6 +229,12 @@ func withImplicitBindings(project Project) Project {
 	if project.APIKey.Env == "" {
 		project.APIKey.Env = apiKeyEnv
 	}
+	if project.URL.GitHub == "" {
+		project.URL.GitHub = GitHubVariable
+	}
+	if project.APIKey.GitHub == "" {
+		project.APIKey.GitHub = GitHubSecret
+	}
 	return project
 }
 
@@ -273,22 +282,26 @@ func (c Config) Validate() error {
 		}
 		names[p.Name] = struct{}{}
 		bindingList := []struct {
-			label string
-			env   string
+			label  string
+			env    string
+			github string
 		}{
-			{label: "url.env", env: p.URL.Env},
-			{label: "api_key.env", env: p.APIKey.Env},
+			{label: "url", env: p.URL.Env, github: p.URL.GitHub},
+			{label: "api_key", env: p.APIKey.Env, github: p.APIKey.GitHub},
 		}
 		for _, binding := range bindingList {
 			label, env := binding.label, binding.env
 			if !envNamePattern.MatchString(env) {
-				problems = append(problems, prefix+"."+label+" is invalid")
+				problems = append(problems, prefix+"."+label+".env is invalid")
 				continue
 			}
+			if binding.github != GitHubVariable && binding.github != GitHubSecret {
+				problems = append(problems, prefix+"."+label+".github must be variable or secret")
+			}
 			if previous, exists := bindings[env]; exists {
-				problems = append(problems, prefix+"."+label+" duplicates "+previous)
+				problems = append(problems, prefix+"."+label+".env duplicates "+previous)
 			} else {
-				bindings[env] = prefix + "." + label
+				bindings[env] = prefix + "." + label + ".env"
 			}
 		}
 	}
