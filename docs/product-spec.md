@@ -1158,6 +1158,19 @@ Windows on `amd64` and `arm64`, plus checksums. Versioned `go install` is
 supported. Homebrew, GHCR publication, signatures, and provenance are 1.0
 targets and may be added incrementally.
 
+Signed binary publication is fail closed. Repository release immutability is a
+one-time administrative prerequisite checked before build publication.
+GoReleaser uploads only to a draft; the workflow validates the exact six
+archives and checksum file, creates a GitHub/Sigstore build-provenance
+attestation from the verified checksum manifest for the exact six archives and
+a separate attestation for the manifest itself, downloads and revalidates the draft assets,
+rejects any additional uploaded assets, confirms the remote tag still resolves
+to the triggering commit, and publishes only after every step succeeds.
+Publishing an immutable release
+also produces GitHub's release attestation. Documentation covers `gh release
+verify`, `gh release verify-asset`, and `gh attestation verify`. The workflow
+does not enable or disable repository administration settings itself.
+
 Before initializing the public Go module path or embedding release URLs in a
 generator, the project must complete its name, repository, and basic trademark
 availability decision. Internal experiments may use a clearly temporary module
@@ -1285,7 +1298,7 @@ verify provenance.
 - [ ] Homebrew tap (requires a separately named distribution repository).
 - [x] GHCR multi-architecture image with SBOM and build provenance.
 - [x] Versioned `go install`.
-- [ ] Signed artifacts and build provenance.
+- [x] Signed artifacts and build provenance.
 - [x] Shell completions for Bash, Zsh, Fish, and PowerShell.
 - [x] JSON Schema and editor integration.
 - [x] Per-binding GitHub variable or secret selection.

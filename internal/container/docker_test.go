@@ -141,9 +141,11 @@ func TestReleasePublishesAttestedMultiArchitectureGHCRImage(t *testing.T) {
 		"needs: release",
 		"packages: write",
 		"attestations: write",
+		"artifact-metadata: write",
 		"id-token: write",
 		"docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0",
 		"docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0",
+		"image=moby/buildkit:v0.23.1@sha256:dbc2dfd9342fd5c891ea94e9774c15cab985681e5ff995a9e366066aa0b9b2b4",
 		"docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0",
 		"actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
 		"platforms: linux/amd64,linux/arm64",
@@ -208,7 +210,7 @@ func TestAttestationFailurePreventsVersionTagPromotion(t *testing.T) {
 	if !ok || job.Needs != "release" {
 		t.Fatalf("container job dependency = %#v, exists = %v", job.Needs, ok)
 	}
-	wantPermissions := map[string]string{"contents": "read", "packages": "write", "attestations": "write", "id-token": "write"}
+	wantPermissions := map[string]string{"contents": "read", "packages": "write", "attestations": "write", "artifact-metadata": "write", "id-token": "write"}
 	if len(job.Permissions) != len(wantPermissions) {
 		t.Fatalf("container permissions = %#v", job.Permissions)
 	}

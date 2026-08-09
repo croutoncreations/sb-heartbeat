@@ -5,6 +5,44 @@ reusable test workflow, including normal tests, race detection, vet, full SQL
 and workflow goldens, and the disposable PostgreSQL suite. It then requires a
 live test against a dedicated hosted Supabase project before GoReleaser runs.
 
+## One-time immutable release setup
+
+Before the next release, a repository owner must open repository **Settings**,
+find **Releases**, and select **Enable release immutability**. This protects
+future release tags and assets from replacement and lets GitHub create a signed
+release attestation when a draft is published. The release workflow checks the
+setting through the GitHub API and fails before creating a draft when it is not
+enabled. It never changes this administrative setting itself.
+
+GoReleaser uploads the six platform archives and `checksums.txt` to a draft.
+The workflow verifies the exact local artifact set and checksums, confirms the
+release is still a draft, creates signed build provenance for the archives and
+checksum file using the verified manifest as the exact archive subject list,
+downloads the draft assets, and verifies the remote bytes again.
+It rejects any additional uploaded asset and confirms the remote tag still
+identifies the workflow's triggering commit immediately before publication.
+Only then does it publish the draft. Consequently, no release is published if
+attestation fails, an asset differs, the final identity check detects a changed
+tag, or the release is unexpectedly public. GitHub does not expose a
+conditional publish operation, so repository writers remain trusted during the
+brief final check-to-publication interval.
+
+After publishing a version such as `v0.2.0`, verify the immutable release and a
+downloaded asset with GitHub CLI:
+
+```bash
+gh release verify v0.2.0
+gh release verify-asset v0.2.0 sb-heartbeat_0.2.0_linux_amd64.tar.gz
+gh attestation verify sb-heartbeat_0.2.0_linux_amd64.tar.gz \
+  -R croutoncreations/sb-heartbeat
+```
+
+`gh release verify` checks GitHub's immutable-release attestation;
+`gh release verify-asset` checks that the local bytes match that release; and
+`gh attestation verify` validates the workflow's signed build-provenance
+attestation. Source archives generated on demand by GitHub are outside the
+uploaded-asset verification set.
+
 ## One-time hosted fixture setup
 
 Create a dedicated Supabase project used only by SB Heartbeat release
