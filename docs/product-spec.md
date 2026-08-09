@@ -861,6 +861,26 @@ status rather than trusting text matching. The CLI does not claim that a
 `database_permission_denied` result identifies the precise missing grant or
 policy.
 
+### 13.3 Optional local status history
+
+`run` and `doctor` accept `--history PATH` and `--history-limit N`. History is
+disabled unless a path is explicit. The default retention is 100 runs; the
+allowed range is 1 through 1,000, and the encoded snapshot is capped at 1 MiB.
+
+The versioned JSON snapshot contains only timestamps, success, project names,
+stable statuses, HTTP statuses, latency, and attempt counts. It never contains
+URLs, environment binding names or values, keys, headers, response bodies, or
+diagnostic messages. Writes use atomic replacement and mode `0600` on POSIX systems; symlinks,
+non-regular files, invalid/unknown JSON, unsupported schemas, and oversized
+inputs fail closed. Atomicity prevents partial snapshots but does not merge
+concurrent writers; the last writer wins, so schedulers should use distinct
+paths or a single writer.
+
+History is unavailable on Windows because the Go filesystem contract does not
+guarantee atomic replacement there; requesting it fails before network access.
+On supported systems, history failures are process-wide internal failures with
+exit code 3. Preflight failures do not create history entries.
+
 ## 14. GitHub Actions integration
 
 `sb-heartbeat install github` generates `.github/workflows/sb-heartbeat.yml` with:
@@ -1207,7 +1227,7 @@ without weakening that path.
 
 ### Observability
 
-- [ ] Local status history with atomic writes and no sensitive data.
+- [x] Local status history with atomic writes and no sensitive data.
 - [ ] Richer GitHub annotations and optional durable result artifacts.
 - [ ] Notifications after configurable repeated failures.
 - [ ] Prometheus or OpenTelemetry-compatible metrics export.

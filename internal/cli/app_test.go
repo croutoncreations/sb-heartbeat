@@ -348,6 +348,130 @@ func TestRunnerResultCountMismatchUsesExitThree(t *testing.T) {
 	}
 }
 
+func TestRunAppendsSanitizedBoundedHistory(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	historyPath := filepath.Join(dir, "private", "history.json")
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_publishable_abcdefghijklmnopqrstuv_12345678",
+	}, result: []heartbeat.Result{{
+		Name: "first", Status: heartbeat.UnexpectedResponse, Attempts: 1,
+		Error: &heartbeat.Error{Code: heartbeat.UnexpectedResponse, Message: "captured body must not persist"},
+	}}}
+	for range 3 {
+		h.stdout.Reset()
+		h.stderr.Reset()
+		if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--history", historyPath, "--history-limit", "2"}, h.dependencies()); code != 1 {
+			t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+		}
+	}
+	contents, err := os.ReadFile(historyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(contents), "captured body") || strings.Contains(string(contents), h.env["FIRST_URL"]) || strings.Contains(string(contents), h.env["FIRST_KEY"]) {
+		t.Fatalf("history contains sensitive material: %s", contents)
+	}
+	var document struct {
+		Runs []json.RawMessage `json:"runs"`
+	}
+	if err := json.Unmarshal(contents, &document); err != nil || len(document.Runs) != 2 {
+		t.Fatalf("history runs = %d, err = %v, history = %s", len(document.Runs), err, contents)
+	}
+}
+
+func TestRunRejectsInvalidHistoryOptionsBeforeNetwork(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--history-limit", "0"}, h.dependencies()); code != 2 || h.called {
+		t.Fatalf("code = %d, runner called = %v", code, h.called)
+	}
+	if !strings.Contains(h.stderr.String(), "requires --history") {
+		t.Fatalf("stderr = %q", h.stderr.String())
+	}
+}
+
+func TestInvalidHistoryContentDoesNotLeakInCLIError(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	historyPath := filepath.Join(dir, "history.json")
+	forbidden := "sb_secret_field_name_must_not_echo"
+	if err := os.WriteFile(historyPath, []byte(`{"schema_version":1,"runs":[],"`+forbidden+`":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_publishable_abcdefghijklmnopqrstuv_12345678",
+	}}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--history", historyPath}, h.dependencies()); code != 3 {
+		t.Fatalf("code = %d", code)
+	}
+	if strings.Contains(h.stderr.String(), forbidden) || !strings.Contains(h.stderr.String(), "invalid history content") {
+		t.Fatalf("stderr = %q", h.stderr.String())
+	}
+}
+
+func TestConfiguredJSONModeAppliesToInvalidHistoryOptions(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, `
+version: 1
+defaults:
+  output: json
+projects:
+  - name: demo
+`)
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--history", filepath.Join(dir, "history.json"), "--history-limit", "nope"}, h.dependencies()); code != 2 || h.called {
+		t.Fatalf("code = %d, runner called = %v", code, h.called)
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(h.stdout.Bytes(), &envelope); err != nil || envelope.Error.Code != "invalid_invocation" {
+		t.Fatalf("output = %q, err = %v", h.stdout.String(), err)
+	}
+}
+
+func TestRunRejectsHistoryPathThatMatchesConfigurationBeforeNetwork(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	h := &harness{}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--history", path}, h.dependencies()); code != 2 || h.called {
+		t.Fatalf("code = %d, runner called = %v", code, h.called)
+	}
+	if !strings.Contains(h.stderr.String(), "must not replace") {
+		t.Fatalf("stderr = %q", h.stderr.String())
+	}
+}
+
+func TestHistoryWriteFailureUsesExitThree(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	target := filepath.Join(dir, "target.json")
+	if err := os.WriteFile(target, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	historyPath := filepath.Join(dir, "history.json")
+	if err := os.Symlink(target, historyPath); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_publishable_abcdefghijklmnopqrstuv_12345678",
+	}}
+	if code := cli.Execute(context.Background(), []string{"--config", path, "run", "--history", historyPath}, h.dependencies()); code != 3 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	contents, err := os.ReadFile(target)
+	if err != nil || string(contents) != "{}" {
+		t.Fatalf("symlink target changed: %q, err = %v", contents, err)
+	}
+}
+
 func TestOutputFormatFlagIsRejectedOutsideCheckCommands(t *testing.T) {
 	h := &harness{}
 	if code := cli.Execute(context.Background(), []string{"version", "--output", "json"}, h.dependencies()); code != 2 {

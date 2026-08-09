@@ -80,8 +80,8 @@ See [Security](docs/security.md), [Configuration](docs/configuration.md), and
 
 ```text
 sb-heartbeat init
-sb-heartbeat run [--project NAME] [--output text|json]
-sb-heartbeat doctor [--project NAME] [--output text|json]
+sb-heartbeat run [--project NAME] [--output text|json] [--history PATH]
+sb-heartbeat doctor [--project NAME] [--output text|json] [--history PATH]
 sb-heartbeat migration install|uninstall [--output PATH]
 sb-heartbeat install github --sb-heartbeat-version VERSION
 sb-heartbeat install cron [--binary-path PATH] [--log-path PATH]
@@ -100,6 +100,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Security model](docs/security.md)
 - [GitHub Actions](docs/github-actions.md)
 - [Local cron](docs/local-cron.md)
+- [Local status history](docs/status-history.md)
 - [Docker](docs/docker.md)
 - [Agent installation](docs/agent-install.md)
 - [Agent prompts](docs/agent-prompts.md)

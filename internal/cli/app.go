@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/croutoncreations/sb-heartbeat/internal/credentials"
 	"github.com/croutoncreations/sb-heartbeat/internal/fileutil"
 	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
+	"github.com/croutoncreations/sb-heartbeat/internal/history"
 	"github.com/croutoncreations/sb-heartbeat/internal/migration"
 	"github.com/croutoncreations/sb-heartbeat/internal/output"
 	"github.com/croutoncreations/sb-heartbeat/internal/scheduler"
@@ -140,20 +143,24 @@ func (a *app) runCommand(doctor bool) *cobra.Command {
 		name, short = "doctor", "Validate configuration and run non-mutating heartbeat diagnostics"
 	}
 	var selectedProject string
+	var historyPath string
+	var historyLimit string
 	command := &cobra.Command{
 		Use:   name,
 		Short: short,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.executeChecks(cmd.Context(), selectedProject, doctor)
+			return a.executeChecks(cmd.Context(), selectedProject, doctor, historyPath, historyLimit, cmd.Flags().Changed("history-limit"))
 		},
 	}
 	command.Flags().StringVar(&selectedProject, "project", "", "run only the named project")
 	command.Flags().StringVar(&a.outputMode, "output", "", "output format: text or json")
+	command.Flags().StringVar(&historyPath, "history", "", "atomically append sanitized results to this local JSON file")
+	command.Flags().StringVar(&historyLimit, "history-limit", "100", "maximum retained history runs (1-1000; requires --history)")
 	return command
 }
 
-func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor bool) error {
+func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor bool, historyPath, historyLimitText string, historyLimitSet bool) error {
 	resolvedConfigPath, err := filepath.Abs(a.configPath)
 	if err != nil {
 		return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
@@ -178,6 +185,26 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		return &commandError{stableCode: "invalid_invocation", message: "output must be text or json"}
 	}
 	a.outputMode = mode
+	if historyPath == "" && historyLimitSet {
+		return &commandError{stableCode: "invalid_invocation", message: "--history-limit requires --history"}
+	}
+	historyLimit, historyLimitErr := strconv.Atoi(historyLimitText)
+	if historyPath != "" && (historyLimitErr != nil || historyLimit < 1 || historyLimit > history.MaxRuns) {
+		return &commandError{stableCode: "invalid_invocation", message: fmt.Sprintf("history limit must be an integer between 1 and %d", history.MaxRuns)}
+	}
+	resolvedHistoryPath := ""
+	if historyPath != "" {
+		if runtime.GOOS == "windows" {
+			return &commandError{stableCode: "invalid_invocation", message: "local history is unavailable on Windows because atomic replacement cannot be guaranteed"}
+		}
+		resolvedHistoryPath, err = filepath.Abs(historyPath)
+		if err != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve history path: " + err.Error()}
+		}
+		if resolvedHistoryPath == resolvedConfigPath {
+			return &commandError{stableCode: "invalid_invocation", message: "history path must not replace the configuration file"}
+		}
+	}
 
 	configured := cfg.Projects
 	if selectedProject != "" {
@@ -210,6 +237,11 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 	finished := a.dependencies.Now()
 	if len(results) != len(projects) {
 		return &commandError{stableCode: "internal_error", message: "heartbeat runner returned an incomplete result set"}
+	}
+	if resolvedHistoryPath != "" {
+		if err := history.Append(resolvedHistoryPath, history.Run{StartedAt: started, FinishedAt: finished, Results: results}, historyLimit); err != nil {
+			return &commandError{stableCode: "internal_error", message: "record local history: " + err.Error()}
+		}
 	}
 	if mode == "json" {
 		if err := output.WriteJSON(a.dependencies.Stdout, output.Run{StartedAt: started, FinishedAt: finished, Results: results}); err != nil {
