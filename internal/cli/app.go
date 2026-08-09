@@ -318,7 +318,8 @@ func runProjects(ctx context.Context, projects []heartbeat.Project, defaults con
 }
 
 func (a *app) initCommand() *cobra.Command {
-	var nonInteractive, force bool
+	var nonInteractive, force, githubAnnotations bool
+	var githubArtifactRetentionDays int
 	var outputPath, projectName, urlEnv, keyEnv, urlGitHubSource, keyGitHubSource, cron, migrationOutput string
 	var schedulerName, workflowOutput, workflowConfig, sbHeartbeatVersion string
 	command := &cobra.Command{
@@ -389,7 +390,9 @@ func (a *app) initCommand() *cobra.Command {
 				if pathErr != nil {
 					return &commandError{stableCode: "invalid_invocation", message: pathErr.Error()}
 				}
-				workflow, err = scheduler.GitHub(cfg, sbHeartbeatVersion, effectiveConfigPath)
+				workflow, err = scheduler.GitHubWithOptions(cfg, sbHeartbeatVersion, effectiveConfigPath, scheduler.GitHubOptions{
+					Annotations: githubAnnotations, ArtifactRetentionDays: githubArtifactRetentionDays,
+				})
 				if err != nil {
 					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 				}
@@ -448,6 +451,8 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&workflowOutput, "workflow-output", ".github/workflows/sb-heartbeat.yml", "GitHub workflow output path")
 	command.Flags().StringVar(&workflowConfig, "workflow-config", "", "repository-relative config path used by GitHub Actions (defaults to the generated config path)")
 	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag for generated automation")
+	command.Flags().BoolVar(&githubAnnotations, "github-annotations", false, "add sanitized per-project GitHub error annotations")
+	command.Flags().IntVar(&githubArtifactRetentionDays, "github-artifact-retention-days", 0, "upload sanitized result JSON for 1-90 days (0 disables)")
 	return command
 }
 
@@ -578,7 +583,8 @@ func derivedEnvironmentDefaults(projectName, urlEnv, keyEnv string) (string, str
 func (a *app) installCommand() *cobra.Command {
 	parent := &cobra.Command{Use: "install", Short: "Generate scheduler integrations"}
 	var outputPath, version, workflowConfig string
-	var force bool
+	var force, githubAnnotations bool
+	var githubArtifactRetentionDays int
 	github := &cobra.Command{
 		Use:   "github",
 		Short: "Generate a GitHub Actions workflow",
@@ -604,7 +610,9 @@ func (a *app) installCommand() *cobra.Command {
 			if pathErr != nil {
 				return &commandError{stableCode: "invalid_invocation", message: pathErr.Error()}
 			}
-			workflow, err := scheduler.GitHub(cfg, version, effectiveConfigPath)
+			workflow, err := scheduler.GitHubWithOptions(cfg, version, effectiveConfigPath, scheduler.GitHubOptions{
+				Annotations: githubAnnotations, ArtifactRetentionDays: githubArtifactRetentionDays,
+			})
 			if err != nil {
 				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 			}
@@ -619,6 +627,8 @@ func (a *app) installCommand() *cobra.Command {
 	github.Flags().StringVar(&version, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag")
 	github.Flags().StringVar(&workflowConfig, "workflow-config", "", "repository-relative config path used by GitHub Actions (defaults to --config)")
 	github.Flags().BoolVar(&force, "force", false, "replace the exact output file")
+	github.Flags().BoolVar(&githubAnnotations, "github-annotations", false, "add sanitized per-project GitHub error annotations")
+	github.Flags().IntVar(&githubArtifactRetentionDays, "github-artifact-retention-days", 0, "upload sanitized result JSON for 1-90 days (0 disables)")
 
 	var cronBinaryPath, cronLogPath string
 	cron := &cobra.Command{

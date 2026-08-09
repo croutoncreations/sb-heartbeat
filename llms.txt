@@ -22,6 +22,7 @@ Agent safety contract:
 - [Configuration](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/configuration.md): Strict YAML contract, derived bindings, GitHub sources, runtime bounds, and editor schema.
 - [Security model](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/security.md): Least-privilege guarantees, credential rejection, fixed-query behavior, and threat boundaries.
 - [GitHub Actions](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/github-actions.md): Pinned workflow generation and safe repository binding setup.
+- [GitHub observability](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/github-observability.md): Opt-in sanitized annotations and retained result artifacts.
 - [Troubleshooting](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/troubleshooting.md): Stable failures and corrective checks.
 - [Product specification](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/product-spec.md): Authoritative product behavior, acceptance criteria, and 1.0 roadmap.
 

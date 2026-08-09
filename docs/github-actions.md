@@ -118,3 +118,6 @@ variables and low-privilege keys only to the heartbeat step.
 GitHub cron is UTC. Scheduled jobs can be delayed or dropped under load, and
 public-repository schedules can be disabled after prolonged repository
 inactivity. Keep `workflow_dispatch` for manual verification.
+
+Optional sanitized annotations and retained result artifacts are documented in
+[GitHub observability](github-observability.md).

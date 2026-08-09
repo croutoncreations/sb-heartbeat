@@ -787,6 +787,66 @@ func TestInstallGitHubGeneratesWorkflowAndRefusesOverwrite(t *testing.T) {
 	}
 }
 
+func TestInstallGitHubGeneratesOptionalObservability(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	workflow := filepath.Join(dir, "workflow.yml")
+	h := &harness{}
+	args := []string{
+		"--config", path, "install", "github", "--sb-heartbeat-version", "v0.1.1", "--output-path", workflow,
+		"--workflow-config", "sb-heartbeat.yaml",
+		"--github-annotations", "--github-artifact-retention-days", "7",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	data, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := string(data); !strings.Contains(text, "project failure::") || !strings.Contains(text, "retention-days: 7") {
+		t.Fatalf("workflow lacks observability:\n%s", text)
+	}
+}
+
+func TestInitGitHubGeneratesOptionalObservability(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "sb-heartbeat.yaml")
+	workflow := filepath.Join(dir, "workflow.yml")
+	h := &harness{}
+	args := []string{
+		"init", "--non-interactive", "--output-path", configPath, "--project-name", "demo",
+		"--scheduler", "github", "--workflow-output", workflow, "--sb-heartbeat-version", "v0.1.1",
+		"--workflow-config", "sb-heartbeat.yaml",
+		"--github-annotations", "--github-artifact-retention-days", "14",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	data, err := os.ReadFile(workflow)
+	if err != nil || !strings.Contains(string(data), "retention-days: 14") {
+		t.Fatalf("workflow = %q, err = %v", data, err)
+	}
+}
+
+func TestInstallGitHubRejectsInvalidArtifactRetentionBeforeWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	workflow := filepath.Join(dir, "workflow.yml")
+	h := &harness{}
+	args := []string{
+		"--config", path, "install", "github", "--sb-heartbeat-version", "v0.1.1", "--output-path", workflow,
+		"--workflow-config", "sb-heartbeat.yaml",
+		"--github-artifact-retention-days", "91",
+	}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d", code)
+	}
+	if _, err := os.Stat(workflow); !os.IsNotExist(err) {
+		t.Fatalf("workflow was written: %v", err)
+	}
+}
+
 func TestInstallGitHubUsesCustomConfigPathByDefault(t *testing.T) {
 	dir := t.TempDir()
 	previous, err := os.Getwd()

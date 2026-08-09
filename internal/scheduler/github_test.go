@@ -97,6 +97,75 @@ func TestGitHubWorkflowUsesConfiguredBindingSources(t *testing.T) {
 	}
 }
 
+func TestGitHubWorkflowGeneratesOptionalSanitizedObservability(t *testing.T) {
+	workflow, err := scheduler.GitHubWithOptions(workflowConfig(t), "v0.1.1", "sb-heartbeat.yaml", scheduler.GitHubOptions{
+		Annotations: true, ArtifactRetentionDays: 7,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(workflow)
+	if strings.ContainsRune(text, '\t') {
+		t.Fatalf("workflow contains a YAML-invalid tab character\n%s", text)
+	}
+	for _, required := range []string{
+		"Prepare sanitized observability result",
+		"if: always()",
+		"jq --exit-status",
+		"--slurp",
+		`candidate_result="${RUNNER_TEMP}/sb-heartbeat-observability.json.tmp"`,
+		`mv "${candidate_result}" "${safe_result}"`,
+		`value=${value//'%'/'%25'}`,
+		`value=${value//$'\r'/'%0D'}`,
+		`value=${value//$'\n'/'%0A'}`,
+		`{name, status, http_status, latency_ms, attempts}`,
+		"::error title=SB Heartbeat project failure::",
+		"::error title=SB Heartbeat invocation failure::",
+		"workflow_missing_result",
+		"observability_sanitization_failed",
+		"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
+		"retention-days: 7",
+		"if-no-files-found: warn",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("observability workflow missing %q\n%s", required, text)
+		}
+	}
+	if strings.Contains(text, "message: .error.message") || strings.Contains(text, "authorization") {
+		t.Fatalf("observability artifact includes sensitive diagnostic fields\n%s", text)
+	}
+	for _, forbidden := range []string{
+		"No heartbeat result was produced",
+		"The bounded result could not be sanitized",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("annotation includes diagnostic message %q\n%s", forbidden, text)
+		}
+	}
+	if strings.Contains(text, `> "${safe_result}"`) {
+		t.Fatalf("sanitizer writes directly to the upload path\n%s", text)
+	}
+}
+
+func TestGitHubWorkflowLeavesObservabilityDisabledByDefault(t *testing.T) {
+	workflow, err := scheduler.GitHub(workflowConfig(t), "v0.1.1", "sb-heartbeat.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(workflow)
+	if strings.Contains(text, "upload-artifact") || strings.Contains(text, "::error title=") {
+		t.Fatalf("default workflow unexpectedly enables optional observability\n%s", text)
+	}
+}
+
+func TestGitHubWorkflowRejectsInvalidArtifactRetention(t *testing.T) {
+	for _, days := range []int{-1, 91} {
+		if _, err := scheduler.GitHubWithOptions(workflowConfig(t), "v0.1.1", "sb-heartbeat.yaml", scheduler.GitHubOptions{ArtifactRetentionDays: days}); err == nil {
+			t.Fatalf("retention %d was accepted", days)
+		}
+	}
+}
+
 func TestGitHubWorkflowRejectsExplicitDefaultSourcesForLegacyRuntime(t *testing.T) {
 	for _, githubValue := range []string{"variable", "null", `""`, ""} {
 		t.Run("value="+githubValue, func(t *testing.T) {

@@ -99,6 +99,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Shell completions](docs/shell-completions.md)
 - [Security model](docs/security.md)
 - [GitHub Actions](docs/github-actions.md)
+- [GitHub observability](docs/github-observability.md)
 - [Local cron](docs/local-cron.md)
 - [Local status history](docs/status-history.md)
 - [Docker](docs/docker.md)

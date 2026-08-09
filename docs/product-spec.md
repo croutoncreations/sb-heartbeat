@@ -923,6 +923,29 @@ Generated instructions explain that low-privilege public client keys may be
 stored according to the repository owner's policy, while recommending secrets
 or scoped variables as the conservative default.
 
+### 14.1 Optional GitHub observability
+
+Workflow generation can independently enable sanitized error annotations and a
+sanitized JSON result artifact. Both are disabled by default. Annotations
+contain only project name plus stable status, or a process-wide stable error
+code. The artifact contains only schema/timestamps/success and project name,
+stable status, HTTP status, latency, and attempts; invocation artifacts contain
+only schema/success/stable code. Neither surface includes URLs, binding names or
+values, keys, headers, bodies, or diagnostic messages.
+Workflow-level annotations use the stable codes `workflow_missing_result` and
+`observability_sanitization_failed` instead of descriptive diagnostic text.
+The workflow accepts exactly one complete schema-v1 result, validates types,
+ranges, project names, stable allowlists, and success consistency before
+projection, and workflow-command escapes every annotation value. It writes to a
+same-directory candidate and moves it to the upload path only after validation;
+failed validation cannot leave an uploadable artifact.
+
+Artifact retention accepts 1 through 90 days, uses the runner temporary
+directory rather than the checkout, and uses an exact commit-pinned official
+upload action. Artifact upload targets GitHub.com; it remains disabled for
+GitHub Enterprise Server installations that lack the modern artifact backend.
+The upload/annotation steps receive no project credential environment mappings.
+
 ## 15. Agent readiness
 
 Agent readiness means predictable noninteractive commands, focused docs, safe
@@ -1228,7 +1251,7 @@ without weakening that path.
 ### Observability
 
 - [x] Local status history with atomic writes and no sensitive data.
-- [ ] Richer GitHub annotations and optional durable result artifacts.
+- [x] Richer GitHub annotations and optional durable result artifacts.
 - [ ] Notifications after configurable repeated failures.
 - [ ] Prometheus or OpenTelemetry-compatible metrics export.
 - [ ] Optional durable backends such as Cloudflare KV.
