@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -805,5 +806,76 @@ func TestCompletionGeneratesScriptsForSupportedShells(t *testing.T) {
 				t.Fatal("completion unexpectedly ran a heartbeat")
 			}
 		})
+	}
+}
+
+func TestGeneratedCompletionScriptsParseAndRegisterWhenShellIsAvailable(t *testing.T) {
+	tests := []struct {
+		name       string
+		executable string
+		args       func(string) []string
+	}{
+		{
+			name: "bash", executable: "bash",
+			args: func(path string) []string {
+				return []string{"--noprofile", "--norc", "-c", `set -e; bash -n "$1"; source "$1"; complete -p sb-heartbeat >/dev/null`, "_", path}
+			},
+		},
+		{
+			name: "zsh", executable: "zsh",
+			args: func(path string) []string {
+				return []string{"-f", "-c", `set -e; zsh -n "$1"; autoload -U compinit; compinit -D; source "$1"; whence -w _sb-heartbeat >/dev/null`, "_", path}
+			},
+		},
+		{
+			name: "fish", executable: "fish",
+			args: func(path string) []string {
+				return []string{"-c", `fish -n $argv[1]; and source $argv[1]; and complete -c sb-heartbeat >/dev/null`, path}
+			},
+		},
+		{
+			name: "powershell", executable: "pwsh",
+			args: func(path string) []string {
+				return []string{"-NoProfile", "-NonInteractive", "-Command", `$script = Get-Content -Raw -LiteralPath $args[0]; [scriptblock]::Create($script) | Out-Null; . $args[0]`, path}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := exec.LookPath(test.executable); err != nil {
+				t.Skipf("%s is not installed", test.executable)
+			}
+			h := &harness{}
+			if code := cli.Execute(context.Background(), []string{"completion", test.name}, h.dependencies()); code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+			}
+			path := filepath.Join(t.TempDir(), "completion")
+			if err := os.WriteFile(path, h.stdout.Bytes(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command(test.executable, test.args(path)...)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("parse/register error = %v, output = %q", err, output)
+			}
+		})
+	}
+}
+
+func TestCompletionBackendSuggestsTopLevelCommandsWithoutRunningHeartbeat(t *testing.T) {
+	h := &harness{}
+	code := cli.Execute(context.Background(), []string{"__complete", ""}, h.dependencies())
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	for _, command := range []string{"completion", "doctor", "init", "install", "migration", "run", "version"} {
+		if !strings.Contains(h.stdout.String(), command+"\t") {
+			t.Errorf("completion output missing %q: %q", command, h.stdout.String())
+		}
+	}
+	if !strings.HasSuffix(strings.TrimSpace(h.stdout.String()), ":4") {
+		t.Fatalf("completion directive = %q, want no-file-completion directive 4", h.stdout.String())
+	}
+	if h.called {
+		t.Fatal("completion unexpectedly ran a heartbeat")
 	}
 }

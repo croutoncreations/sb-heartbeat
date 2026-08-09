@@ -128,7 +128,6 @@ The following remain part of the product plan but are deferred from the MVP:
 - backup checks and archive guidance;
 - paused-project inventory and optional Management API integration;
 - metrics export and additional scheduler generators;
-- shell completions;
 - `llms.txt` and, if it proves useful, generated `llms-full.txt`;
 - agent installation tests with multiple coding agents; and
 - signed artifacts and provenance where practical.
@@ -594,6 +593,11 @@ sb-heartbeat migration uninstall
 sb-heartbeat install github
 sb-heartbeat install cron
 sb-heartbeat version
+```
+
+The following 1.0 follow-up command is also supported:
+
+```text
 sb-heartbeat completion [bash|zsh|fish|powershell]
 ```
 
