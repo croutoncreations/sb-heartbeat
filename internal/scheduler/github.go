@@ -12,15 +12,18 @@ import (
 	"time"
 
 	"github.com/croutoncreations/sb-heartbeat/internal/config"
+	"github.com/croutoncreations/sb-heartbeat/internal/notification"
 )
 
 const (
 	checkoutCommit       = "3d3c42e5aac5ba805825da76410c181273ba90b1"
 	uploadArtifactCommit = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+	cacheCommit          = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
 )
 
 var releaseVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 var configPathPattern = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+var environmentNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,126}$`)
 
 const observabilityJQFilter = `def exact_keys($expected): type == "object" and ((keys | sort) == ($expected | sort)); ` +
 	`def integer: type == "number" and floor == .; ` +
@@ -42,11 +45,18 @@ type workflowData struct {
 	ArtifactDays   int
 	Observability  bool
 	ResultFilter   string
+	Notifications  bool
+	WebhookSecret  string
+	NotifyAfter    int
 }
 
 type GitHubOptions struct {
-	Annotations           bool
-	ArtifactRetentionDays int
+	Annotations                  bool
+	ArtifactRetentionDays        int
+	NotificationWebhookSecret    string
+	NotificationWebhookSecretSet bool
+	NotifyAfter                  int
+	NotifyAfterSet               bool
 }
 
 func GitHub(cfg config.Config, version, configPath string) ([]byte, error) {
@@ -60,11 +70,32 @@ func GitHubWithOptions(cfg config.Config, version, configPath string, options Gi
 	if options.ArtifactRetentionDays < 0 || options.ArtifactRetentionDays > 90 {
 		return nil, errors.New("artifact retention days must be between 0 and 90")
 	}
+	if options.NotificationWebhookSecretSet && options.NotificationWebhookSecret == "" {
+		return nil, errors.New("notification webhook secret name must not be empty")
+	}
+	if options.NotificationWebhookSecret == "" {
+		if options.NotifyAfterSet || options.NotifyAfter != 0 {
+			return nil, errors.New("notification threshold requires a notification webhook secret")
+		}
+	} else {
+		if !environmentNamePattern.MatchString(options.NotificationWebhookSecret) || strings.HasPrefix(options.NotificationWebhookSecret, "GITHUB_") {
+			return nil, errors.New("notification webhook secret name is invalid")
+		}
+		if !options.NotifyAfterSet && options.NotifyAfter == 0 {
+			options.NotifyAfter = 3
+		}
+		if options.NotifyAfter < 1 || options.NotifyAfter > 100 {
+			return nil, errors.New("notification threshold must be between 1 and 100")
+		}
+	}
 	if !releaseVersionPattern.MatchString(version) {
 		return nil, errors.New("SB Heartbeat version must be an exact release tag such as v0.1.0")
 	}
 	if usesExplicitGitHubSources(cfg) && !supportsGitHubSources(version) {
 		return nil, errors.New("explicit GitHub binding sources require SB Heartbeat v0.2.0 or newer")
+	}
+	if options.NotificationWebhookSecret != "" && !supportsGitHubSources(version) {
+		return nil, errors.New("generated notifications require SB Heartbeat v0.2.0 or newer")
 	}
 	if configPath == "" || path.IsAbs(configPath) || path.Clean(configPath) != configPath ||
 		!configPathPattern.MatchString(configPath) || configPath[0] == '-' || configPath == "." ||
@@ -86,10 +117,11 @@ func GitHubWithOptions(cfg config.Config, version, configPath string, options Gi
 	var buffer bytes.Buffer
 	data := workflowData{
 		Cron: cfg.Scheduler.Cron, Version: version, ConfigPath: configPath,
-		TimeoutMinutes: workflowTimeoutMinutes(cfg), Projects: cfg.Projects,
+		TimeoutMinutes: workflowTimeoutMinutes(cfg, options.NotificationWebhookSecret != ""), Projects: cfg.Projects,
 		Annotations: options.Annotations, ArtifactDays: options.ArtifactRetentionDays,
 		Observability: options.Annotations || options.ArtifactRetentionDays > 0,
-		ResultFilter:  observabilityJQFilter,
+		ResultFilter:  observabilityJQFilter, Notifications: options.NotificationWebhookSecret != "",
+		WebhookSecret: options.NotificationWebhookSecret, NotifyAfter: options.NotifyAfter,
 	}
 	if err := tmpl.Execute(&buffer, data); err != nil {
 		return nil, fmt.Errorf("render GitHub workflow: %w", err)
@@ -117,7 +149,7 @@ func supportsGitHubSources(version string) bool {
 	return major > 0 || minor >= 2
 }
 
-func workflowTimeoutMinutes(cfg config.Config) int {
+func workflowTimeoutMinutes(cfg config.Config, notifications bool) int {
 	backoff := time.Duration(0)
 	for retry := 0; retry < cfg.Defaults.Retries; retry++ {
 		delay := cfg.Defaults.RetryBackoff * time.Duration(1<<retry)
@@ -125,7 +157,11 @@ func workflowTimeoutMinutes(cfg config.Config) int {
 	}
 	perBatch := cfg.Defaults.Timeout*time.Duration(cfg.Defaults.Retries+1) + backoff
 	batches := (len(cfg.Projects) + cfg.Defaults.Concurrency - 1) / cfg.Defaults.Concurrency
-	minutes := int((perBatch*time.Duration(batches)+time.Minute-1)/time.Minute) + 2
+	total := perBatch * time.Duration(batches)
+	if notifications {
+		total += time.Duration(len(cfg.Projects))*notification.DeliveryTimeout + 30*time.Second
+	}
+	minutes := int((total+time.Minute-1)/time.Minute) + 2
 	return max(5, min(minutes, 360))
 }
 
@@ -142,9 +178,34 @@ on:
 
 permissions:
   contents: read
+{{- if .Notifications }}
+  actions: read
+{{- end }}
+{{- if .Notifications }}
+
+concurrency:
+  group: sb-heartbeat-${{ "{{" }} github.workflow_ref {{ "}}" }}
+  cancel-in-progress: false
+{{- end }}
 
 jobs:
+{{- if .Notifications }}
+  notification-ref-guard:
+    if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject a non-default notification ref
+        shell: bash
+        run: |
+          echo "Notification workflows must be dispatched from the repository default branch" >&2
+          exit 2
+
+{{- end }}
   heartbeat:
+{{- if .Notifications }}
+    # Durable notification state is intentionally owned by the default branch.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+{{- end }}
     runs-on: ubuntu-latest
     timeout-minutes: {{ .TimeoutMinutes }}
     env:
@@ -167,27 +228,172 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/sb-heartbeat-bin"
           tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/sb-heartbeat-bin" sb-heartbeat
           echo "${RUNNER_TEMP}/sb-heartbeat-bin" >> "${GITHUB_PATH}"
+{{- if .Notifications }}
+
+      # This cache contains only SB Heartbeat's strictly validated sanitized state.
+      - name: Derive notification cache scope
+        id: notification-cache-scope
+        env:
+          SB_HEARTBEAT_WORKFLOW_REF: ${{ "{{" }} github.workflow_ref {{ "}}" }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          scope="$(printf '%s' "${SB_HEARTBEAT_WORKFLOW_REF}" | sha256sum | awk '{print $1}')"
+          if [[ ! "${scope}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Could not derive the notification cache scope" >&2
+            exit 3
+          fi
+          echo "scope=${scope}" >> "${GITHUB_OUTPUT}"
+
+      - name: Resolve preceding notification run
+        id: notification-predecessor
+        env:
+          GITHUB_TOKEN: ${{ "{{" }} github.token {{ "}}" }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if (( GITHUB_RUN_ATTEMPT > 1 )); then
+            echo "run_id=${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          current_run_path="${RUNNER_TEMP}/sb-heartbeat-current-run.json"
+          if ! curl --fail --silent --show-error \
+            --connect-timeout 5 \
+            --max-time 15 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "${current_run_path}" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"; then
+            echo "Could not identify the notification workflow; state will reset" >&2
+            echo "run_id=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          workflow_id="$(jq -er '.workflow_id | select(type == "number")' "${current_run_path}" 2>/dev/null || true)"
+          if [[ ! "${workflow_id}" =~ ^[0-9]+$ ]]; then
+            echo "Could not identify the notification workflow; state will reset" >&2
+            echo "run_id=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          runs_path="${RUNNER_TEMP}/sb-heartbeat-notification-runs.json"
+          if ! curl --fail --silent --show-error \
+            --connect-timeout 5 \
+            --max-time 15 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --get \
+            --data-urlencode "branch=${GITHUB_REF_NAME}" \
+            --data-urlencode "per_page=100" \
+            --output "${runs_path}" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs"; then
+            echo "Could not resolve the preceding notification run; state will reset" >&2
+            echo "run_id=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          preceding_run_id="$(jq -er --argjson current "${GITHUB_RUN_NUMBER}" '
+            .workflow_runs
+            | map(select((.run_number | type == "number") and .run_number < $current and (.id | type == "number")))
+            | sort_by(.run_number)
+            | reverse
+            | (.[0].id // "")
+          ' "${runs_path}" 2>/dev/null || true)"
+          if [[ -n "${preceding_run_id}" && ! "${preceding_run_id}" =~ ^[0-9]+$ ]]; then
+            preceding_run_id=""
+          fi
+          echo "run_id=${preceding_run_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore sanitized notification state
+        uses: actions/cache/restore@` + cacheCommit + ` # v6.1.0
+        with:
+          path: |
+            ${{ "{{" }} runner.temp {{ "}}" }}/sb-heartbeat-notifications/notifications.json
+            ${{ "{{" }} runner.temp {{ "}}" }}/sb-heartbeat-notifications/run-id
+          key: sb-heartbeat-notifications-${{ "{{" }} steps.notification-cache-scope.outputs.scope {{ "}}" }}-${{ "{{" }} github.run_id {{ "}}" }}-${{ "{{" }} github.run_attempt {{ "}}" }}
+          restore-keys: |
+            sb-heartbeat-notifications-${{ "{{" }} steps.notification-cache-scope.outputs.scope {{ "}}" }}-
+{{- end }}
 
       - name: Run heartbeats
+{{- if .Notifications }}
+        id: heartbeat
+{{- end }}
         env:
 {{- range .Projects }}
           {{ .URL.Env }}: ${{ "{{" }} {{ githubContext .URL.GitHub }}.{{ .URL.Env }} {{ "}}" }}
           {{ .APIKey.Env }}: ${{ "{{" }} {{ githubContext .APIKey.GitHub }}.{{ .APIKey.Env }} {{ "}}" }}
 {{- end }}
+{{- if .Notifications }}
+          SB_HEARTBEAT_NOTIFICATION_WEBHOOK: ${{ "{{" }} secrets.{{ .WebhookSecret }} {{ "}}" }}
+{{- end }}
         shell: bash
         run: |
           set -o pipefail
+{{- if .Notifications }}
+          state_directory="${RUNNER_TEMP}/sb-heartbeat-notifications"
+          state_path="${RUNNER_TEMP}/sb-heartbeat-notifications/notifications.json"
+          sequence_path="${RUNNER_TEMP}/sb-heartbeat-notifications/run-id"
+          expected_sequence="${{ "{{" }} steps.notification-predecessor.outputs.run_id {{ "}}" }}"
+          if (( GITHUB_RUN_ATTEMPT > 1 )); then
+            expected_sequence="${GITHUB_RUN_ID}"
+          fi
+          restored_sequence=""
+          if [[ -f "${sequence_path}" && ! -L "${sequence_path}" ]] &&
+             [[ "$(wc -l < "${sequence_path}")" -eq 1 ]] &&
+             [[ "$(wc -c < "${sequence_path}")" -le 32 ]] &&
+             grep -Eq '^[0-9]+$' "${sequence_path}"; then
+            IFS= read -r restored_sequence < "${sequence_path}"
+          fi
+          if [[ -e "${state_path}" || -L "${state_path}" || -e "${sequence_path}" || -L "${sequence_path}" ]]; then
+            if [[ ! -f "${state_path}" || -L "${state_path}" || "${restored_sequence}" != "${expected_sequence}" ]]; then
+              rm -rf -- "${state_path}" "${sequence_path}"
+            fi
+          fi
+          state_before=missing
+          if [[ -f "${state_path}" && ! -L "${state_path}" ]]; then
+            state_before="$(sha256sum "${state_path}" | awk '{print $1}')"
+          fi
+{{- end }}
           set +e
-          sb-heartbeat --config {{ .ConfigPath }} run --output json | tee "${RUNNER_TEMP}/sb-heartbeat-result.json"
+          sb-heartbeat --config {{ .ConfigPath }} run --output json{{ if .Notifications }} --notification-state "${state_path}" --notification-webhook-env SB_HEARTBEAT_NOTIFICATION_WEBHOOK --notify-after {{ .NotifyAfter }}{{ end }} | tee "${RUNNER_TEMP}/sb-heartbeat-result.json"
           status=${PIPESTATUS[0]}
           set -e
+{{- if .Notifications }}
+          state_changed=false
+          if [[ -f "${state_path}" && ! -L "${state_path}" ]]; then
+            state_after="$(sha256sum "${state_path}" | awk '{print $1}')"
+            if [[ "${state_after}" != "${state_before}" ]]; then
+              state_changed=true
+            fi
+          fi
+          if [[ "${state_changed}" == true ]]; then
+            mkdir -p "${state_directory}"
+            printf '%s\n' "${GITHUB_RUN_ID}" > "${sequence_path}.tmp"
+            mv "${sequence_path}.tmp" "${sequence_path}"
+          fi
+          echo "status=${status}" >> "${GITHUB_OUTPUT}"
+          echo "state_changed=${state_changed}" >> "${GITHUB_OUTPUT}"
+{{- end }}
           {
             echo '## SB Heartbeat heartbeat results'
             echo '~~~json'
             cat "${RUNNER_TEMP}/sb-heartbeat-result.json"
             echo '~~~'
           } >> "${GITHUB_STEP_SUMMARY}"
+{{- if not .Notifications }}
           exit "${status}"
+{{- end }}
+{{- if .Notifications }}
+
+      - name: Save sanitized notification state
+        if: always() && steps.heartbeat.outputs.state_changed == 'true'
+        uses: actions/cache/save@` + cacheCommit + ` # v6.1.0
+        with:
+          path: |
+            ${{ "{{" }} runner.temp {{ "}}" }}/sb-heartbeat-notifications/notifications.json
+            ${{ "{{" }} runner.temp {{ "}}" }}/sb-heartbeat-notifications/run-id
+          key: sb-heartbeat-notifications-${{ "{{" }} steps.notification-cache-scope.outputs.scope {{ "}}" }}-${{ "{{" }} github.run_id {{ "}}" }}-${{ "{{" }} github.run_attempt {{ "}}" }}
+{{- end }}
 {{- if .Observability }}
 
       - name: Prepare sanitized observability result
@@ -241,5 +447,19 @@ jobs:
           path: ${{ "{{" }} runner.temp {{ "}}" }}/sb-heartbeat-observability.json
           if-no-files-found: warn
           retention-days: {{ .ArtifactDays }}
+{{- end }}
+{{- if .Notifications }}
+
+      - name: Propagate heartbeat exit status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="${{ "{{" }} steps.heartbeat.outputs.status {{ "}}" }}"
+          if [[ ! "${status}" =~ ^[0-3]$ ]]; then
+            echo "SB Heartbeat did not produce a valid exit status" >&2
+            exit 3
+          fi
+          exit "${status}"
 {{- end }}
 `

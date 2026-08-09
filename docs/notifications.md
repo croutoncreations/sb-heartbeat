@@ -65,3 +65,46 @@ State for project names not included in a run is retained so `--project` runs
 cannot erase another project's failure episode. If projects are permanently
 renamed or removed, stop every writer before deleting the state file; deletion
 resets notification suppression and streak counts for all projects.
+
+## Generated GitHub Actions workflow
+
+Starting with the `v0.2.0` runtime, generate a scheduled workflow with durable
+notification state by naming the GitHub secret that will hold the webhook:
+
+```bash
+sb-heartbeat install github \
+  --sb-heartbeat-version v0.2.0 \
+  --github-notification-webhook-secret SB_HEARTBEAT_NOTIFICATION_WEBHOOK \
+  --notify-after 3
+```
+
+The generator writes only the secret name. Add the value through the repository
+web UI under **Settings → Secrets and variables → Actions**, or without placing
+the value in shell history:
+
+```bash
+printf '%s' "$SB_HEARTBEAT_NOTIFICATION_WEBHOOK" |
+  gh secret set SB_HEARTBEAT_NOTIFICATION_WEBHOOK --repo OWNER/REPOSITORY
+```
+
+The workflow maps that secret only into the heartbeat step. Durable
+notifications run only from the repository's default branch; a manual dispatch
+on another ref fails with an explicit guard message and performs no heartbeat.
+The workflow serializes default-branch runs, uses read-only
+Actions metadata to identify the immediately preceding run of the same
+workflow and default branch, and accepts restored state only when its recorded
+run ID matches that exact predecessor (or the same run during a rerun). An
+older fallback or malformed sequence metadata resets the state instead of
+rolling it back.
+The workflow saves changed state even when the heartbeat or webhook fails and
+reports the original CLI exit status only after the save. The state cache never
+contains the webhook or Supabase credentials.
+
+Persistence uses the official `actions/cache` restore and save actions pinned
+to reviewed commit `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`
+(`v6.1.0`). GitHub cache storage is best effort: a cache can be evicted or
+manually deleted, which resets streak and suppression state and delays the next
+notification until the threshold is reached again. Failure to resolve GitHub's
+preceding-run metadata also resets state safely. Do not treat this cache as an
+audit log. Re-run generation with the same notification options and
+`--force` when upgrading or replacing an installed workflow.

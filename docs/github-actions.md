@@ -115,6 +115,11 @@ against `checksums.txt`, runs JSON checks, and writes the result to the job
 summary. It grants the workflow token only `contents: read`, and exposes project
 variables and low-privilege keys only to the heartbeat step.
 
+When generated repeated-failure notifications are enabled, the workflow also
+grants `actions: read` so it can validate restored state against the exact
+preceding default-branch run. The webhook secret remains scoped only to the
+heartbeat step. See [Repeated-failure notifications](notifications.md).
+
 GitHub cron is UTC. Scheduled jobs can be delayed or dropped under load, and
 public-repository schedules can be disabled after prolonged repository
 inactivity. Keep `workflow_dispatch` for manual verification.

@@ -21,6 +21,11 @@ func TestNotificationDocumentationCoversSafeOperation(t *testing.T) {
 		"single writer",
 		"Windows",
 		"no recovery notification",
+		"--github-notification-webhook-secret",
+		"gh secret set SB_HEARTBEAT_NOTIFICATION_WEBHOOK",
+		"cache can be evicted",
+		"actions/cache",
+		"v0.2.0",
 	} {
 		if !strings.Contains(doc, required) {
 			t.Errorf("notification docs missing %q", required)

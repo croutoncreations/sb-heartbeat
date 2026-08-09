@@ -390,14 +390,21 @@ func runProjects(ctx context.Context, projects []heartbeat.Project, defaults con
 
 func (a *app) initCommand() *cobra.Command {
 	var nonInteractive, force, githubAnnotations bool
-	var githubArtifactRetentionDays int
+	var githubArtifactRetentionDays, notifyAfter int
 	var outputPath, projectName, urlEnv, keyEnv, urlGitHubSource, keyGitHubSource, cron, migrationOutput string
-	var schedulerName, workflowOutput, workflowConfig, sbHeartbeatVersion string
+	var schedulerName, workflowOutput, workflowConfig, sbHeartbeatVersion, notificationWebhookSecret string
 	command := &cobra.Command{
 		Use:   "init",
 		Short: "Create a SB Heartbeat configuration",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if schedulerName == "" {
+				for _, flag := range []string{"workflow-output", "workflow-config", "sb-heartbeat-version", "github-annotations", "github-artifact-retention-days", "github-notification-webhook-secret", "notify-after"} {
+					if cmd.Flags().Changed(flag) {
+						return &commandError{stableCode: "invalid_invocation", message: "--" + flag + " requires --scheduler github"}
+					}
+				}
+			}
 			var projects []config.Project
 			if !nonInteractive {
 				reader := bufio.NewReader(a.dependencies.Stdin)
@@ -461,8 +468,15 @@ func (a *app) initCommand() *cobra.Command {
 				if pathErr != nil {
 					return &commandError{stableCode: "invalid_invocation", message: pathErr.Error()}
 				}
+				effectiveNotifyAfter := 0
+				if notificationWebhookSecret != "" || cmd.Flags().Changed("notify-after") {
+					effectiveNotifyAfter = notifyAfter
+				}
 				workflow, err = scheduler.GitHubWithOptions(cfg, sbHeartbeatVersion, effectiveConfigPath, scheduler.GitHubOptions{
 					Annotations: githubAnnotations, ArtifactRetentionDays: githubArtifactRetentionDays,
+					NotificationWebhookSecret:    notificationWebhookSecret,
+					NotificationWebhookSecretSet: cmd.Flags().Changed("github-notification-webhook-secret"),
+					NotifyAfter:                  effectiveNotifyAfter, NotifyAfterSet: cmd.Flags().Changed("notify-after"),
 				})
 				if err != nil {
 					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
@@ -502,6 +516,9 @@ func (a *app) initCommand() *cobra.Command {
 			if _, err := io.WriteString(a.dependencies.Stdout, githubBindingSummary(cfg.Projects)); err != nil {
 				return &commandError{stableCode: "internal_error", message: "files were created, but write GitHub binding guidance: " + err.Error()}
 			}
+			if notificationWebhookSecret != "" {
+				fmt.Fprintln(a.dependencies.Stdout, "Notification webhook:\n  GitHub secret:", notificationWebhookSecret)
+			}
 			if _, err := io.WriteString(a.dependencies.Stdout, initNextSteps(migrationOutput)); err != nil {
 				return &commandError{stableCode: "internal_error", message: "files were created, but write next-step guidance: " + err.Error()}
 			}
@@ -524,6 +541,8 @@ func (a *app) initCommand() *cobra.Command {
 	command.Flags().StringVar(&sbHeartbeatVersion, "sb-heartbeat-version", currentVersion(), "exact SB Heartbeat release tag for generated automation")
 	command.Flags().BoolVar(&githubAnnotations, "github-annotations", false, "add sanitized per-project GitHub error annotations")
 	command.Flags().IntVar(&githubArtifactRetentionDays, "github-artifact-retention-days", 0, "upload sanitized result JSON for 1-90 days (0 disables)")
+	command.Flags().StringVar(&notificationWebhookSecret, "github-notification-webhook-secret", "", "GitHub secret containing the HTTPS notification webhook URL")
+	command.Flags().IntVar(&notifyAfter, "notify-after", 3, "notify after this many consecutive failures (1-100; requires a notification webhook secret)")
 	return command
 }
 
@@ -653,14 +672,14 @@ func derivedEnvironmentDefaults(projectName, urlEnv, keyEnv string) (string, str
 
 func (a *app) installCommand() *cobra.Command {
 	parent := &cobra.Command{Use: "install", Short: "Generate scheduler integrations"}
-	var outputPath, version, workflowConfig string
+	var outputPath, version, workflowConfig, notificationWebhookSecret string
 	var force, githubAnnotations bool
-	var githubArtifactRetentionDays int
+	var githubArtifactRetentionDays, notifyAfter int
 	github := &cobra.Command{
 		Use:   "github",
 		Short: "Generate a GitHub Actions workflow",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			resolvedConfigPath, err := filepath.Abs(a.configPath)
 			if err != nil {
 				return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
@@ -681,8 +700,15 @@ func (a *app) installCommand() *cobra.Command {
 			if pathErr != nil {
 				return &commandError{stableCode: "invalid_invocation", message: pathErr.Error()}
 			}
+			effectiveNotifyAfter := 0
+			if notificationWebhookSecret != "" || cmd.Flags().Changed("notify-after") {
+				effectiveNotifyAfter = notifyAfter
+			}
 			workflow, err := scheduler.GitHubWithOptions(cfg, version, effectiveConfigPath, scheduler.GitHubOptions{
 				Annotations: githubAnnotations, ArtifactRetentionDays: githubArtifactRetentionDays,
+				NotificationWebhookSecret:    notificationWebhookSecret,
+				NotificationWebhookSecretSet: cmd.Flags().Changed("github-notification-webhook-secret"),
+				NotifyAfter:                  effectiveNotifyAfter, NotifyAfterSet: cmd.Flags().Changed("notify-after"),
 			})
 			if err != nil {
 				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
@@ -691,6 +717,9 @@ func (a *app) installCommand() *cobra.Command {
 				return generatedFileCommandError(err, "")
 			}
 			fmt.Fprintln(a.dependencies.Stdout, "Created", outputPath)
+			if notificationWebhookSecret != "" {
+				fmt.Fprintln(a.dependencies.Stdout, "Notification webhook:\n  GitHub secret:", notificationWebhookSecret)
+			}
 			return nil
 		},
 	}
@@ -700,6 +729,8 @@ func (a *app) installCommand() *cobra.Command {
 	github.Flags().BoolVar(&force, "force", false, "replace the exact output file")
 	github.Flags().BoolVar(&githubAnnotations, "github-annotations", false, "add sanitized per-project GitHub error annotations")
 	github.Flags().IntVar(&githubArtifactRetentionDays, "github-artifact-retention-days", 0, "upload sanitized result JSON for 1-90 days (0 disables)")
+	github.Flags().StringVar(&notificationWebhookSecret, "github-notification-webhook-secret", "", "GitHub secret containing the HTTPS notification webhook URL")
+	github.Flags().IntVar(&notifyAfter, "notify-after", 3, "notify after this many consecutive failures (1-100; requires a notification webhook secret)")
 
 	var cronBinaryPath, cronLogPath string
 	cron := &cobra.Command{

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -155,6 +156,146 @@ func TestGitHubWorkflowLeavesObservabilityDisabledByDefault(t *testing.T) {
 	text := string(workflow)
 	if strings.Contains(text, "upload-artifact") || strings.Contains(text, "::error title=") {
 		t.Fatalf("default workflow unexpectedly enables optional observability\n%s", text)
+	}
+}
+
+func TestGitHubWorkflowGeneratesDurableRepeatedFailureNotifications(t *testing.T) {
+	workflow, err := scheduler.GitHubWithOptions(workflowConfig(t), "v0.2.0", "sb-heartbeat.yaml", scheduler.GitHubOptions{
+		NotificationWebhookSecret: "SB_HEARTBEAT_NOTIFICATION_WEBHOOK",
+		NotifyAfter:               3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(workflow)
+	for _, required := range []string{
+		"notification-ref-guard:",
+		`if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)`,
+		"Notification workflows must be dispatched from the repository default branch",
+		`if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)`,
+		"actions: read",
+		"concurrency:",
+		"cancel-in-progress: false",
+		"Derive notification cache scope",
+		"SB_HEARTBEAT_WORKFLOW_REF: ${{ github.workflow_ref }}",
+		`scope="$(printf '%s' "${SB_HEARTBEAT_WORKFLOW_REF}" | sha256sum | awk '{print $1}')"`,
+		"Restore sanitized notification state",
+		"Resolve preceding notification run",
+		`id: notification-predecessor`,
+		`GITHUB_TOKEN: ${{ github.token }}`,
+		`/actions/runs/${GITHUB_RUN_ID}`,
+		`.workflow_id`,
+		`--connect-timeout 5`,
+		`--max-time 15`,
+		`--data-urlencode "branch=${GITHUB_REF_NAME}"`,
+		`.run_number < $current`,
+		`expected_sequence="${{ steps.notification-predecessor.outputs.run_id }}"`,
+		"actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0",
+		"actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0",
+		"SB_HEARTBEAT_NOTIFICATION_WEBHOOK: ${{ secrets.SB_HEARTBEAT_NOTIFICATION_WEBHOOK }}",
+		`state_path="${RUNNER_TEMP}/sb-heartbeat-notifications/notifications.json"`,
+		`sequence_path="${RUNNER_TEMP}/sb-heartbeat-notifications/run-id"`,
+		`expected_sequence="${GITHUB_RUN_ID}"`,
+		`rm -rf -- "${state_path}" "${sequence_path}"`,
+		`--notification-state "${state_path}"`,
+		"--notification-webhook-env SB_HEARTBEAT_NOTIFICATION_WEBHOOK",
+		"--notify-after 3",
+		`id: heartbeat`,
+		`echo "status=${status}" >> "${GITHUB_OUTPUT}"`,
+		`echo "state_changed=${state_changed}" >> "${GITHUB_OUTPUT}"`,
+		`printf '%s\n' "${GITHUB_RUN_ID}" > "${sequence_path}.tmp"`,
+		"Save sanitized notification state",
+		"steps.heartbeat.outputs.state_changed == 'true'",
+		"Propagate heartbeat exit status",
+		`status="${{ steps.heartbeat.outputs.status }}"`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("notification workflow missing %q\n%s", required, text)
+		}
+	}
+	for _, forbidden := range []string{"expected_sequence=$((GITHUB_RUN_NUMBER - 1))", "/run-number", "workflow_file="} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("notification workflow uses global workflow sequence %q\n%s", forbidden, text)
+		}
+	}
+	if !strings.Contains(text, `sb-heartbeat-notifications-${{ steps.notification-cache-scope.outputs.scope }}-`) {
+		t.Fatalf("cache key does not use the hashed full workflow/ref identity\n%s", text)
+	}
+	if strings.Contains(text, `sb-heartbeat-notifications-${{ github.ref_name }}`) || strings.Contains(text, `sb-heartbeat-notifications-${{ github.ref_type }}`) {
+		t.Fatalf("cache key uses a prefix-ambiguous raw ref identity\n%s", text)
+	}
+	scope := strings.Index(text, "Derive notification cache scope")
+	predecessor := strings.Index(text, "Resolve preceding notification run")
+	restore := strings.Index(text, "Restore sanitized notification state")
+	run := strings.Index(text, "Run heartbeats")
+	save := strings.Index(text, "Save sanitized notification state")
+	final := strings.Index(text, "Propagate heartbeat exit status")
+	if scope < 0 || predecessor <= scope || restore <= predecessor || run <= restore || save <= run || final <= save {
+		t.Fatalf("notification workflow steps are out of order\n%s", text)
+	}
+	secret := strings.Index(text, "SB_HEARTBEAT_NOTIFICATION_WEBHOOK: ${{ secrets.SB_HEARTBEAT_NOTIFICATION_WEBHOOK }}")
+	if secret < run || secret > save {
+		t.Fatalf("notification webhook is scoped outside the heartbeat step\n%s", text)
+	}
+	if strings.Count(text, "SB_HEARTBEAT_NOTIFICATION_WEBHOOK: ${{ secrets.SB_HEARTBEAT_NOTIFICATION_WEBHOOK }}") != 1 {
+		t.Fatalf("notification webhook secret is mapped more than once\n%s", text)
+	}
+	outputs := strings.Index(text, `echo "state_changed=${state_changed}" >> "${GITHUB_OUTPUT}"`)
+	summary := strings.Index(text, `} >> "${GITHUB_STEP_SUMMARY}"`)
+	if outputs < 0 || summary < 0 || outputs > summary {
+		t.Fatalf("state outputs are emitted after the nonessential job summary\n%s", text)
+	}
+}
+
+func TestGitHubWorkflowValidatesNotificationOptionsAndRuntimeVersion(t *testing.T) {
+	tests := []scheduler.GitHubOptions{
+		{NotifyAfter: 3},
+		{NotificationWebhookSecret: "bad-name", NotifyAfter: 3},
+		{NotificationWebhookSecret: "GITHUB_WEBHOOK", NotifyAfter: 3},
+		{NotificationWebhookSecretSet: true},
+		{NotificationWebhookSecret: "WEBHOOK", NotifyAfterSet: true},
+		{NotificationWebhookSecret: "WEBHOOK", NotifyAfter: -1},
+		{NotificationWebhookSecret: "WEBHOOK", NotifyAfter: 101},
+	}
+	for _, options := range tests {
+		if _, err := scheduler.GitHubWithOptions(workflowConfig(t), "v0.2.0", "sb-heartbeat.yaml", options); err == nil {
+			t.Fatalf("invalid notification options accepted: %+v", options)
+		}
+	}
+	if _, err := scheduler.GitHubWithOptions(workflowConfig(t), "v0.1.1", "sb-heartbeat.yaml", scheduler.GitHubOptions{
+		NotificationWebhookSecret: "WEBHOOK", NotifyAfter: 3,
+	}); err == nil || !strings.Contains(err.Error(), "v0.2.0") {
+		t.Fatalf("legacy notification runtime error=%v", err)
+	}
+	workflow, err := scheduler.GitHubWithOptions(workflowConfig(t), "v0.2.0", "sb-heartbeat.yaml", scheduler.GitHubOptions{
+		NotificationWebhookSecret: "WEBHOOK",
+	})
+	if err != nil || !strings.Contains(string(workflow), "--notify-after 3") {
+		t.Fatalf("default notification threshold workflow=%q err=%v", workflow, err)
+	}
+}
+
+func TestGitHubWorkflowTimeoutIncludesWorstCaseNotificationDelivery(t *testing.T) {
+	projects := make([]config.Project, 30)
+	for index := range projects {
+		name := "project_" + strconv.Itoa(index)
+		projects[index] = config.Project{
+			Name: name, URL: config.EnvReference{Env: "URL_" + strconv.Itoa(index)},
+			APIKey: config.EnvReference{Env: "KEY_" + strconv.Itoa(index)},
+		}
+	}
+	cfg, err := config.NewProjects(projects, config.DefaultCron)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow, err := scheduler.GitHubWithOptions(cfg, "v0.2.0", "sb-heartbeat.yaml", scheduler.GitHubOptions{
+		NotificationWebhookSecret: "WEBHOOK", NotifyAfter: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(workflow), "timeout-minutes: 11") {
+		t.Fatalf("workflow timeout does not include 30 sequential delivery attempts\n%s", workflow)
 	}
 }
 

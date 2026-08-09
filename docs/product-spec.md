@@ -933,6 +933,23 @@ only, not recovery notifications.
 - JSON execution output; and
 - a concise GitHub job summary.
 
+When generated notifications are enabled, the workflow accepts only the name
+of a GitHub Actions secret containing the webhook URL and requires a `v0.2.0`
+or newer runtime. The secret is scoped to the heartbeat step. Notification
+runs are limited to the repository default branch; dispatching another ref
+fails explicitly without running a heartbeat. They use `actions: read` only to
+resolve the immediately preceding run of that workflow and branch, and use
+non-cancelling concurrency to preserve the single-writer state contract. Exact
+commit-pinned `actions/cache/restore` and `actions/cache/save` steps restore the
+newest sanitized state and its workflow run ID. A restore is accepted only
+when that ID matches the exact predecessor or current rerun; older fallback
+state and malformed sequence metadata reset rather than roll back. Changed
+state is saved under a unique per-run key. The heartbeat step captures rather than immediately returns the CLI
+status; a final step propagates that status only after state saving, so failed
+heartbeats and pending delivery attempts remain durable. Cache eviction or
+manual deletion safely resets streaks but can delay notification; cache state
+is not an audit log or a guaranteed durable backend.
+
 The mapping is deterministic and configured per binding:
 
 - `github: variable` maps the configured environment name from the GitHub
