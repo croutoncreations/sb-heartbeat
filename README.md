@@ -106,7 +106,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Coding-agent installation evaluation](docs/agent-evaluation.md)
 - [LLM and coding-agent index](llms.txt)
 - [Troubleshooting](docs/troubleshooting.md)
-- [Uninstall](docs/uninstall.md)
+- [Stop heartbeats and uninstall](docs/uninstall.md)
 - [Release verification](docs/releasing.md)
 - [Product specification](docs/product-spec.md)
 

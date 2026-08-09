@@ -38,3 +38,19 @@ are absolute, explain how the configured environment variables will reach the
 scheduler without exposing values, and recommend protected logs plus exit-code
 monitoring. Leave installation of the reviewed entry to the user.
 ```
+
+## Stop heartbeats safely
+
+```text
+Read this repository's instructions first. Prepare a reviewed lifecycle change
+for the Supabase project I identify: disable only the identified project's scheduling first,
+without disabling a shared scheduler used by retained
+projects. Then remove only its configuration and unused bindings. Derive each
+binding source from the config or workflow, and check whether GitHub variables,
+secrets, workflow files, local cron entries, or migration streams are shared
+before proposing removal. Generate project-scoped guarded uninstall SQL only
+when I ask; never apply uninstall SQL, change GitHub settings, edit a crontab,
+delete a credential, pause a project, or permanently delete it without separate
+explicit authorization.
+Report every proposed or changed file and every remaining manual step.
+```

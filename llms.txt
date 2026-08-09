@@ -35,3 +35,4 @@ Agent safety contract:
 
 - [Local cron](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/local-cron.md): Read-only cron suggestion generation, environment handling, logs, and monitoring.
 - [Container](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/docker.md): Hardened local container build, read-only runtime, and multi-architecture verification.
+- [Stop heartbeats and uninstall](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/uninstall.md): Scheduler-first offboarding, shared-binding checks, guarded SQL generation, and archive handoff.

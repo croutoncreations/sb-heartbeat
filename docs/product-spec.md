@@ -1219,7 +1219,7 @@ without weakening that path.
       recovery messaging.
 - [ ] Project inventory through optional Management API integration.
 - [ ] Backup checks and deliberate archive workflows.
-- [ ] Make it easy to stop heartbeats for projects users should archive.
+- [x] Make it easy to stop heartbeats for projects users should archive.
 
 ### Distribution and agent experience
 
