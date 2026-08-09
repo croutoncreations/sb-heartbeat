@@ -783,3 +783,27 @@ func TestInstallCronResolvesDetectedExecutableToAbsolutePath(t *testing.T) {
 		t.Fatalf("output = %q, want %q", h.stdout.String(), expected)
 	}
 }
+
+func TestCompletionGeneratesScriptsForSupportedShells(t *testing.T) {
+	tests := map[string]string{
+		"bash":       "bash completion V2 for sb-heartbeat",
+		"zsh":        "compdef _sb-heartbeat sb-heartbeat",
+		"fish":       "complete -c sb-heartbeat",
+		"powershell": "Register-ArgumentCompleter",
+	}
+	for shell, marker := range tests {
+		t.Run(shell, func(t *testing.T) {
+			h := &harness{}
+			code := cli.Execute(context.Background(), []string{"completion", shell}, h.dependencies())
+			if code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+			}
+			if !strings.Contains(h.stdout.String(), marker) {
+				t.Fatalf("completion output missing %q", marker)
+			}
+			if h.called {
+				t.Fatal("completion unexpectedly ran a heartbeat")
+			}
+		})
+	}
+}

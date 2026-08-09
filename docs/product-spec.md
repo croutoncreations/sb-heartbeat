@@ -594,7 +594,13 @@ sb-heartbeat migration uninstall
 sb-heartbeat install github
 sb-heartbeat install cron
 sb-heartbeat version
+sb-heartbeat completion [bash|zsh|fish|powershell]
 ```
+
+The completion command writes a shell script to standard output without loading
+configuration, resolving environment variables, or making network requests.
+Cobra supplies shell-specific persistent-installation guidance through
+`sb-heartbeat completion <shell> --help`.
 
 `sb-heartbeat check` may be a hidden or documented alias for `run` if it adds
 negligible maintenance cost.
@@ -1196,7 +1202,7 @@ without weakening that path.
 
 - [ ] Homebrew tap, `go install`, and GHCR image.
 - [ ] Signed artifacts and build provenance.
-- [ ] Shell completions.
+- [x] Shell completions for Bash, Zsh, Fish, and PowerShell.
 - [x] JSON Schema and editor integration.
 - [ ] `llms.txt`; add `llms-full.txt` only if consumers demonstrate value.
 - [ ] Agent installation tests with at least two coding agents.

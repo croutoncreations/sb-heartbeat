@@ -96,6 +96,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Quickstart](docs/quickstart.md)
 - [Configuration](docs/configuration.md)
 - [JSON Schema](schema/sb-heartbeat.schema.json)
+- [Shell completions](docs/shell-completions.md)
 - [Security model](docs/security.md)
 - [GitHub Actions](docs/github-actions.md)
 - [Local cron](docs/local-cron.md)
