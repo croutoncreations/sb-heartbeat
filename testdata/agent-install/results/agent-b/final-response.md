@@ -1,21 +1,15 @@
-# Agent B final response
-
 ## Changed files
 
-- `sb-heartbeat.yaml`
-- `.github/workflows/sb-heartbeat.yml`
-- `supabase/migrations/20260808225416_install_sb_heartbeat.sql`
+- `sb-heartbeat.yaml` — project `evaluation-stage`, required environment bindings, and default three-times-daily UTC schedule.
+- `.github/workflows/sb-heartbeat.yml` — exact SB Heartbeat `v0.1.1`, checksum-verified release download, SHA-pinned checkout action, repository variable/secret bindings.
+- `supabase/migrations/20260808000000_install_sb_heartbeat.sql` — guarded installation migration following the required naming convention.
 
-The configuration and generated workflow use the requested project, bindings,
-default schedule, and exact `v0.1.1` release. The guarded migration regenerated
-byte-for-byte, workflow YAML and pins passed inspection, downstream instructions
-remained unchanged, and no credentials, network checks, SQL application, or
-commit were introduced.
+Local artifact assertions passed. `AGENTS.md` and `TASK.md` remain unchanged. No credentials were used, SQL was not applied, network project checks were not run, repository settings were not changed, and no commit was created.
 
 ## Remaining manual steps
 
-1. Review and apply the migration through the established process.
-2. Create the named GitHub variable and low-privilege API-key secret.
-3. Once values are available, run `doctor` and one on-demand heartbeat.
-4. Review, commit, and push the generated artifacts.
-5. Use manual dispatch and validate the workflow.
+1. Review and apply the migration through the repository’s normal Supabase migration process.
+2. Create GitHub repository variable `EVALUATION_SUPABASE_URL`.
+3. Create GitHub repository secret `EVALUATION_SUPABASE_API_KEY` using only a low-privilege publishable/anon client key—never a secret or service-role key.
+4. Once those values are available in the environment, run `sb-heartbeat doctor`, then one on-demand `sb-heartbeat run`.
+5. Review, commit, and push the generated artifacts to enable the scheduled workflow.

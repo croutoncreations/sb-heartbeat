@@ -23,6 +23,7 @@ type evaluationManifest struct {
 	Reasoning      string            `json:"reasoning"`
 	SourceRevision string            `json:"source_revision"`
 	BinarySHA256   string            `json:"binary_sha256"`
+	LegacySHA256   string            `json:"legacy_binary_sha256"`
 	FixtureSHA256  string            `json:"fixture_sha256"`
 	ResponseSHA256 string            `json:"final_response_sha256"`
 	Generated      map[string]string `json:"generated_files"`
@@ -30,6 +31,12 @@ type evaluationManifest struct {
 }
 
 var unsafeEvaluationMaterial = regexp.MustCompile(`(?i)(sb_publishable_|sb_secret_|postgres(?:ql)?://|eyJ[A-Za-z0-9_-]{20,}\.|https://[a-z]{20}\.supabase\.co)`)
+
+const (
+	evaluationSourceRevision  = "657c1924e158d1ea0e1727445995f6c20ed8d39f"
+	evaluatorBinarySHA256     = "636c6d20baff6c2a06d364d937e82d03f5a345f6ab8c61b78a9af987ae1c7b28"
+	publishedV011BinarySHA256 = "79aea2eebe163c290d76136aedb4caa9bf1171b769f09bf76740cd5086f679dd"
+)
 
 func TestAgentInstallationEvaluationFixtureIsCredentialFreeAndBounded(t *testing.T) {
 	root := filepath.Join("..", "..")
@@ -104,12 +111,17 @@ func TestAgentInstallationEvaluationRetainsVerifiableIndependentRuns(t *testing.
 			resultRoot := filepath.Join(resultsRoot, run)
 			var manifest evaluationManifest
 			decodeEvaluationJSON(t, filepath.Join(resultRoot, "manifest.json"), &manifest)
-			if manifest.SchemaVersion != 1 || manifest.Agent != expectedAgent || manifest.Model != "gpt-5.6-sol" || manifest.Reasoning != "high" {
+			if manifest.SchemaVersion != 2 || manifest.Agent != expectedAgent || manifest.Model != "gpt-5.6-sol" || manifest.Reasoning != "high" {
 				t.Fatalf("manifest identity = %+v", manifest)
 			}
 			if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(manifest.SourceRevision) ||
-				!regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(manifest.BinarySHA256) {
+				!regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(manifest.BinarySHA256) ||
+				!regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(manifest.LegacySHA256) {
 				t.Fatalf("manifest provenance is invalid: %+v", manifest)
+			}
+			if manifest.SourceRevision != evaluationSourceRevision || manifest.BinarySHA256 != evaluatorBinarySHA256 ||
+				manifest.LegacySHA256 != publishedV011BinarySHA256 {
+				t.Fatalf("manifest provenance does not match the reviewed evaluation: %+v", manifest)
 			}
 			if manifest.FixtureSHA256 != fixtureHash {
 				t.Fatalf("fixture hash = %s, want %s", manifest.FixtureSHA256, fixtureHash)
@@ -129,7 +141,7 @@ func TestAgentInstallationEvaluationRetainsVerifiableIndependentRuns(t *testing.
 			assertEvaluationArtifacts(t, resultsRoot, manifest)
 			for _, check := range []string{
 				"published_guides_read", "instructions_unchanged", "migration_exact", "workflow_actionlint",
-				"no_credentials", "no_additional_commit", "manual_steps_reported",
+				"actual_pinned_release_parsed_config", "no_credentials", "no_additional_commit", "manual_steps_reported",
 			} {
 				if !manifest.Checks[check] {
 					t.Errorf("check %q did not pass", check)
@@ -139,7 +151,7 @@ func TestAgentInstallationEvaluationRetainsVerifiableIndependentRuns(t *testing.
 			if sha256Hex([]byte(response)) != manifest.ResponseSHA256 {
 				t.Fatal("sanitized final-response hash does not match manifest")
 			}
-			for _, required := range []string{"Changed files", "Remaining manual steps", "doctor", "manual dispatch"} {
+			for _, required := range []string{"Changed files", "Remaining manual steps", "doctor", "on-demand"} {
 				if !strings.Contains(response, required) {
 					t.Errorf("final response missing %q", required)
 				}
@@ -290,8 +302,8 @@ func TestAgentInstallationEvaluationIsIndexedAndTrackedAsComplete(t *testing.T) 
 		t.Fatal("README does not index the evaluation")
 	}
 	spec := readEvaluationFile(t, root, "docs", "product-spec.md")
-	if !strings.Contains(spec, "- [ ] Agent installation tests with at least two coding agents") {
-		t.Fatal("product roadmap does not track the required evaluation rerun")
+	if !strings.Contains(spec, "- [x] Agent installation tests with at least two coding agents.") {
+		t.Fatal("product roadmap does not mark the two-agent evaluation complete")
 	}
 }
 

@@ -1230,8 +1230,7 @@ without weakening that path.
 - [x] JSON Schema and editor integration.
 - [x] Per-binding GitHub variable or secret selection.
 - [x] `llms.txt`; add `llms-full.txt` only if consumers demonstrate value.
-- [ ] Agent installation tests with at least two coding agents (rerun required
-      after the v0.1.1 compatibility correction).
+- [x] Agent installation tests with at least two coding agents.
 - [x] Copyable prompts without modifying downstream `AGENTS.md` files.
 
 ## 23. Risks and mitigations

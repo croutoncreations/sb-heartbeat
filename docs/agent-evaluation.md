@@ -2,12 +2,6 @@
 
 Last run: 2026-08-08
 
-> **Superseded:** final compatibility review proved that the retained generated
-> configuration could not be parsed by its pinned `v0.1.1` runtime. These runs
-> remain historical evidence only. The evaluation must be rerun after the
-> compatibility correction and must execute the generated config with the
-> actual pinned release binary before the roadmap item is complete.
-
 SB Heartbeat's published onboarding guidance was exercised by two fresh coding
 agents in independent, disposable local Git repositories. Each agent read the
 exact current [`agent-install.md`](agent-install.md) and **Prepare an
@@ -25,16 +19,18 @@ artifact semantics, result file set, and fixture bounds.
 
 | Item | Value |
 | --- | --- |
-| Source revision | `480ba0ce2c9eafa8939bfb682678b1837e3771e3` |
-| Evaluator binary SHA-256 | `e3dbd91b5ae47dcc446201140cda66ef9e7e9c1c82267a08c49b010a97f2a0ff` |
+| Source revision | `657c1924e158d1ea0e1727445995f6c20ed8d39f` |
+| Evaluator binary SHA-256 | `636c6d20baff6c2a06d364d937e82d03f5a345f6ab8c61b78a9af987ae1c7b28` |
+| Published v0.1.1 binary SHA-256 | `79aea2eebe163c290d76136aedb4caa9bf1171b769f09bf76740cd5086f679dd` (Darwin arm64) |
 | Fixture SHA-256 | `ffb4da34d323fa782dc43870deb17627f0ca18a60a26d33ea46dbbd45f8b61fd` |
 | Agents | Agent A and Agent B, fresh `gpt-5.6-sol`, high reasoning |
 | Isolation | Separate temporary Git repositories with identical initial trees |
 
 The evaluator built the binary from the recorded source revision with
-`-trimpath` and set its version to `v0.1.1` for workflow generation. This tests
-downstream preparation, not release installation. Published archive downloads
-and checksums remain covered by release and workflow tests.
+`-trimpath` and set its version to `v0.1.1` for workflow generation. Separately,
+the published Darwin arm64 `v0.1.1` archive was verified against its published
+checksum before its binary loaded each generated config and reproduced the
+retained workflow byte-for-byte.
 
 ## Procedure
 
@@ -47,19 +43,25 @@ and checksums remain covered by release and workflow tests.
    sha256sum /tmp/sb-heartbeat-agent-guide-eval
    ```
 
-2. For each fresh run, create a temporary Git repository, copy
+2. Download the published `v0.1.1` archive for the evaluator platform, verify it
+   against the release's `checksums.txt`, extract it, and record the binary
+   hash.
+3. For each fresh run, create a temporary Git repository, copy
    `downstream-instructions.txt` to `AGENTS.md`, copy `project-brief.md` to
    `TASK.md`, and create `supabase/migrations`. Commit only those two fixture
    files before dispatch.
-3. Give the agent the repository path, evaluator binary path, and read-only
+4. Give the agent the repository path, evaluator binary path, and read-only
    local paths to the two published guides. Provide no conversation history,
    credentials, hosted URL, or additional installation checklist.
-4. After the agent stops, compare `AGENTS.md` and `TASK.md` with the inputs;
+5. After the agent stops, compare `AGENTS.md` and `TASK.md` with the inputs;
    compare its migration byte-for-byte with `sb-heartbeat migration install`;
    run `actionlint` on its workflow; inspect strict configuration and binding
    sources; scan all non-Git files for credential patterns; and confirm the Git
-   history still contains only the fixture commit.
-5. Record the source, binary, fixture, artifact, and sanitized-response hashes
+   history still contains only the fixture commit. Run the checksum-verified
+   published `v0.1.1` binary against the generated config and compare its
+   workflow output byte-for-byte with the agent's workflow.
+6. Record the source, evaluator binary, published binary, fixture, artifact,
+   and sanitized-response hashes
    in a manifest. Retain credential-free artifacts and responses, then run:
 
    ```bash
@@ -86,20 +88,21 @@ Both [Agent A](../testdata/agent-install/results/agent-a/manifest.json) and
 - migration generated but not applied;
 - workflow used an exact release version, pinned action SHA, and checksum
   verification;
+- the checksum-verified published `v0.1.1` binary parsed each generated config
+  and reproduced its workflow exactly;
 - no credential values requested or written, no `.env` file, and no network or
   project check attempted;
 - no commit created; and
 - final response listed every changed file and all remaining manual steps.
 
 Agent A chose
-`supabase/migrations/20260809055402_sb_heartbeat_install.sql`; Agent B chose
-`supabase/migrations/20260808225416_install_sb_heartbeat.sql`. The contents were
+`supabase/migrations/20260808235920_install_sb_heartbeat.sql`; Agent B chose
+`supabase/migrations/20260808000000_install_sb_heartbeat.sql`. The contents were
 identical and exact, while both filenames followed the downstream convention.
 Their sanitized handoffs are retained beside their manifests.
 
 Both agents left migration review/application, GitHub binding creation,
-`doctor`, one on-demand heartbeat, artifact review/commit, and manual workflow
-dispatch to the user.
+`doctor`, one on-demand heartbeat, and artifact review/commit to the user.
 
 Re-run this evaluation when the published agent guidance, initialization,
 migration output, or generated workflow behavior changes materially. Always use

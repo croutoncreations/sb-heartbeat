@@ -12,7 +12,5 @@ projects:
   - name: evaluation-stage
     url:
       env: EVALUATION_SUPABASE_URL
-      github: variable
     api_key:
       env: EVALUATION_SUPABASE_API_KEY
-      github: secret
