@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "agent": "Agent A",
+  "model": "gpt-5.6-sol",
+  "reasoning": "high",
+  "source_revision": "480ba0ce2c9eafa8939bfb682678b1837e3771e3",
+  "binary_sha256": "e3dbd91b5ae47dcc446201140cda66ef9e7e9c1c82267a08c49b010a97f2a0ff",
+  "fixture_sha256": "ffb4da34d323fa782dc43870deb17627f0ca18a60a26d33ea46dbbd45f8b61fd",
+  "final_response_sha256": "adac4741460d730322d74d7ee0a52fea810fa9929dd7ada6e521e90be3e2c2d3",
+  "generated_files": {
+    "sb-heartbeat.yaml": "a657719ef7fa3a792e778843c7026f6ac84cc7ab1e71accbe704231d354e1228",
+    ".github/workflows/sb-heartbeat.yml": "14bae746c7af2499a3d4adf924284b46b6fda66e7cd42ee4464c2d9652f2f659",
+    "supabase/migrations/20260809055402_sb_heartbeat_install.sql": "8e014da925747719a787d7b5a51f67c4bd39d76a2d0ecfe52685360513809dc7"
+  },
+  "checks": {
+    "published_guides_read": true,
+    "instructions_unchanged": true,
+    "migration_exact": true,
+    "workflow_actionlint": true,
+    "no_credentials": true,
+    "no_additional_commit": true,
+    "manual_steps_reported": true
+  }
+}

@@ -1,0 +1,12 @@
+# Disposable downstream repository instructions
+
+This instruction file must not be modified, replaced, or supplemented.
+
+- Store database migrations under `supabase/migrations` using the existing
+  `YYYYMMDDHHMMSS_description.sql` naming convention.
+- Do not apply migrations from this repository-maintenance task.
+- Generated GitHub Actions belong under `.github/workflows`.
+- Do not create or edit application source files, credential files, or other
+  coding-agent instruction files.
+- Do not commit; the evaluator will inspect the working tree.
+
