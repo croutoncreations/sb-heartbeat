@@ -15,6 +15,7 @@ import (
 	"github.com/croutoncreations/sb-heartbeat/internal/cli"
 	"github.com/croutoncreations/sb-heartbeat/internal/config"
 	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
+	"github.com/croutoncreations/sb-heartbeat/internal/notification"
 )
 
 type harness struct {
@@ -26,6 +27,9 @@ type harness struct {
 	seen       []heartbeat.Project
 	result     []heartbeat.Result
 	executable string
+	notifyErr  error
+	notified   []notification.Event
+	webhooks   []string
 }
 
 func (h *harness) dependencies() cli.Dependencies {
@@ -54,6 +58,11 @@ func (h *harness) dependencies() cli.Dependencies {
 				return "/usr/local/bin/sb-heartbeat", nil
 			}
 			return h.executable, nil
+		},
+		DeliverNotification: func(_ context.Context, webhook string, event notification.Event) error {
+			h.webhooks = append(h.webhooks, webhook)
+			h.notified = append(h.notified, event)
+			return h.notifyErr
 		},
 	}
 	if h.stdin != nil {
@@ -378,6 +387,106 @@ func TestRunAppendsSanitizedBoundedHistory(t *testing.T) {
 	}
 	if err := json.Unmarshal(contents, &document); err != nil || len(document.Runs) != 2 {
 		t.Fatalf("history runs = %d, err = %v, history = %s", len(document.Runs), err, contents)
+	}
+}
+
+func TestRunNotifiesOnceAfterRepeatedFailuresAndResetsAfterHealth(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	statePath := filepath.Join(dir, "private", "notifications.json")
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_publishable_abcdefghijklmnopqrstuv_12345678",
+		"WEBHOOK":   "https://hooks.example.com/private-token",
+	}, result: []heartbeat.Result{{Name: "first", Status: heartbeat.Timeout, Attempts: 1}}}
+	args := []string{"--config", path, "run", "--notification-state", statePath, "--notification-webhook-env", "WEBHOOK", "--notify-after", "2"}
+	for run := 1; run <= 3; run++ {
+		h.stdout.Reset()
+		h.stderr.Reset()
+		if code := cli.Execute(context.Background(), args, h.dependencies()); code != 1 {
+			t.Fatalf("failure run %d code=%d stderr=%q", run, code, h.stderr.String())
+		}
+	}
+	if len(h.notified) != 1 || h.notified[0].Project != "first" || h.notified[0].ConsecutiveFailures != 2 || len(h.webhooks) != 1 {
+		t.Fatalf("notifications=%+v webhooks=%d", h.notified, len(h.webhooks))
+	}
+	h.result = []heartbeat.Result{{Name: "first", Status: heartbeat.Healthy, Attempts: 1}}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("healthy reset code=%d stderr=%q", code, h.stderr.String())
+	}
+	h.result = []heartbeat.Result{{Name: "first", Status: heartbeat.Timeout, Attempts: 1}}
+	for range 2 {
+		h.stdout.Reset()
+		h.stderr.Reset()
+		if code := cli.Execute(context.Background(), args, h.dependencies()); code != 1 {
+			t.Fatalf("new episode code=%d stderr=%q", code, h.stderr.String())
+		}
+	}
+	if len(h.notified) != 2 || h.notified[1].Episode == h.notified[0].Episode {
+		t.Fatalf("new episode notifications=%+v", h.notified)
+	}
+}
+
+func TestRunRetriesFailedNotificationWithoutLeakingWebhook(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	statePath := filepath.Join(dir, "notifications.json")
+	webhook := "https://hooks.example.com/private-token"
+	h := &harness{env: map[string]string{
+		"FIRST_URL": "https://abcdefghijklmnopqrst.supabase.co",
+		"FIRST_KEY": "sb_publishable_abcdefghijklmnopqrstuv_12345678",
+		"WEBHOOK":   webhook,
+	}, result: []heartbeat.Result{{Name: "first", Status: heartbeat.DNSFailure, Attempts: 1}}, notifyErr: errors.New("response body secret")}
+	args := []string{"--config", path, "run", "--notification-state", statePath, "--notification-webhook-env", "WEBHOOK", "--notify-after", "1"}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 3 {
+		t.Fatalf("failed delivery code=%d stderr=%q", code, h.stderr.String())
+	}
+	if strings.Contains(h.stderr.String(), webhook) || strings.Contains(h.stderr.String(), "response body secret") {
+		t.Fatalf("notification error leaked details: %q", h.stderr.String())
+	}
+	h.notifyErr = nil
+	h.stdout.Reset()
+	h.stderr.Reset()
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 1 {
+		t.Fatalf("retry code=%d stderr=%q", code, h.stderr.String())
+	}
+	if len(h.notified) != 2 {
+		t.Fatalf("pending notification was not retried: %+v", h.notified)
+	}
+}
+
+func TestRunRejectsInvalidNotificationOptionsBeforeNetwork(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	statePath := filepath.Join(dir, "notifications.json")
+	tests := map[string][]string{
+		"state only":       {"--notification-state", statePath},
+		"webhook only":     {"--notification-webhook-env", "WEBHOOK"},
+		"threshold only":   {"--notify-after", "2"},
+		"bad threshold":    {"--notification-state", statePath, "--notification-webhook-env", "WEBHOOK", "--notify-after", "0"},
+		"bad env name":     {"--notification-state", statePath, "--notification-webhook-env", "bad-name"},
+		"config collision": {"--notification-state", path, "--notification-webhook-env", "WEBHOOK"},
+	}
+	for name, flags := range tests {
+		t.Run(name, func(t *testing.T) {
+			h := &harness{env: map[string]string{"WEBHOOK": "https://hooks.example.com/path"}}
+			args := append([]string{"--config", path, "run"}, flags...)
+			if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 || h.called || len(h.notified) != 0 {
+				t.Fatalf("code=%d runner=%v notifications=%+v stderr=%q", code, h.called, h.notified, h.stderr.String())
+			}
+		})
+	}
+	for name, env := range map[string]map[string]string{
+		"missing webhook": {},
+		"invalid webhook": {"WEBHOOK": "http://hooks.example.com/private-token"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := &harness{env: env}
+			args := []string{"--config", path, "run", "--notification-state", statePath, "--notification-webhook-env", "WEBHOOK"}
+			if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 || h.called || strings.Contains(h.stderr.String(), "private-token") {
+				t.Fatalf("code=%d runner=%v stderr=%q", code, h.called, h.stderr.String())
+			}
+		})
 	}
 }
 

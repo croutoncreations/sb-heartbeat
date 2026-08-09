@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
 	"github.com/croutoncreations/sb-heartbeat/internal/history"
 	"github.com/croutoncreations/sb-heartbeat/internal/migration"
+	"github.com/croutoncreations/sb-heartbeat/internal/notification"
 	"github.com/croutoncreations/sb-heartbeat/internal/output"
 	"github.com/croutoncreations/sb-heartbeat/internal/scheduler"
 	"github.com/croutoncreations/sb-heartbeat/internal/security"
@@ -29,13 +31,14 @@ import (
 var Version = "devel"
 
 type Dependencies struct {
-	Stdin       io.Reader
-	Stdout      io.Writer
-	Stderr      io.Writer
-	LookupEnv   func(string) (string, bool)
-	RunProjects func(context.Context, []heartbeat.Project, config.Defaults) []heartbeat.Result
-	Now         func() time.Time
-	Executable  func() (string, error)
+	Stdin               io.Reader
+	Stdout              io.Writer
+	Stderr              io.Writer
+	LookupEnv           func(string) (string, bool)
+	RunProjects         func(context.Context, []heartbeat.Project, config.Defaults) []heartbeat.Result
+	Now                 func() time.Time
+	Executable          func() (string, error)
+	DeliverNotification func(context.Context, string, notification.Event) error
 }
 
 type app struct {
@@ -58,6 +61,15 @@ type preflightProblem struct {
 }
 
 type promptOutputError struct{ err error }
+
+type notificationOptions struct {
+	statePath        string
+	webhookEnv       string
+	thresholdText    string
+	thresholdChanged bool
+}
+
+var environmentNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,126}$`)
 
 func (e *promptOutputError) Error() string { return e.err.Error() }
 func (e *promptOutputError) Unwrap() error { return e.err }
@@ -113,6 +125,11 @@ func withDefaults(dependencies Dependencies) Dependencies {
 	if dependencies.RunProjects == nil {
 		dependencies.RunProjects = runProjects
 	}
+	if dependencies.DeliverNotification == nil {
+		dependencies.DeliverNotification = func(ctx context.Context, webhook string, event notification.Event) error {
+			return notification.Deliver(ctx, nil, webhook, event)
+		}
+	}
 	return dependencies
 }
 
@@ -145,22 +162,29 @@ func (a *app) runCommand(doctor bool) *cobra.Command {
 	var selectedProject string
 	var historyPath string
 	var historyLimit string
+	var notificationState, notificationWebhookEnv, notifyAfter string
 	command := &cobra.Command{
 		Use:   name,
 		Short: short,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.executeChecks(cmd.Context(), selectedProject, doctor, historyPath, historyLimit, cmd.Flags().Changed("history-limit"))
+			return a.executeChecks(cmd.Context(), selectedProject, doctor, historyPath, historyLimit, cmd.Flags().Changed("history-limit"), notificationOptions{
+				statePath: notificationState, webhookEnv: notificationWebhookEnv,
+				thresholdText: notifyAfter, thresholdChanged: cmd.Flags().Changed("notify-after"),
+			})
 		},
 	}
 	command.Flags().StringVar(&selectedProject, "project", "", "run only the named project")
 	command.Flags().StringVar(&a.outputMode, "output", "", "output format: text or json")
 	command.Flags().StringVar(&historyPath, "history", "", "atomically append sanitized results to this local JSON file")
 	command.Flags().StringVar(&historyLimit, "history-limit", "100", "maximum retained history runs (1-1000; requires --history)")
+	command.Flags().StringVar(&notificationState, "notification-state", "", "private local state file for repeated-failure notifications")
+	command.Flags().StringVar(&notificationWebhookEnv, "notification-webhook-env", "", "environment variable containing the HTTPS notification webhook URL")
+	command.Flags().StringVar(&notifyAfter, "notify-after", "3", "notify after this many consecutive failures (1-100; requires notification state and webhook)")
 	return command
 }
 
-func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor bool, historyPath, historyLimitText string, historyLimitSet bool) error {
+func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor bool, historyPath, historyLimitText string, historyLimitSet bool, notify notificationOptions) error {
 	resolvedConfigPath, err := filepath.Abs(a.configPath)
 	if err != nil {
 		return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
@@ -205,6 +229,39 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 			return &commandError{stableCode: "invalid_invocation", message: "history path must not replace the configuration file"}
 		}
 	}
+	configuredNotifications := notify.statePath != "" || notify.webhookEnv != "" || notify.thresholdChanged
+	if configuredNotifications && (notify.statePath == "" || notify.webhookEnv == "") {
+		return &commandError{stableCode: "invalid_invocation", message: "--notification-state and --notification-webhook-env are required together"}
+	}
+	notificationThreshold, thresholdErr := strconv.Atoi(notify.thresholdText)
+	if configuredNotifications && (thresholdErr != nil || notificationThreshold < 1 || notificationThreshold > notification.MaxThreshold) {
+		return &commandError{stableCode: "invalid_invocation", message: fmt.Sprintf("notification threshold must be an integer between 1 and %d", notification.MaxThreshold)}
+	}
+	resolvedNotificationState := ""
+	webhookURL := ""
+	if configuredNotifications {
+		if runtime.GOOS == "windows" {
+			return &commandError{stableCode: "invalid_invocation", message: "local notification state is unavailable on Windows because atomic replacement cannot be guaranteed"}
+		}
+		if !environmentNamePattern.MatchString(notify.webhookEnv) {
+			return &commandError{stableCode: "invalid_invocation", message: "notification webhook environment variable name is invalid"}
+		}
+		resolvedNotificationState, err = filepath.Abs(notify.statePath)
+		if err != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve notification state path: " + err.Error()}
+		}
+		if resolvedNotificationState == resolvedConfigPath || (resolvedHistoryPath != "" && resolvedNotificationState == resolvedHistoryPath) {
+			return &commandError{stableCode: "invalid_invocation", message: "notification state path must not replace the configuration or history file"}
+		}
+		var exists bool
+		webhookURL, exists = a.dependencies.LookupEnv(notify.webhookEnv)
+		if !exists || webhookURL == "" {
+			return &commandError{stableCode: "missing_input", message: "notification webhook environment variable is missing"}
+		}
+		if err := notification.ValidateWebhookURL(webhookURL); err != nil {
+			return &commandError{stableCode: "missing_input", message: "notification webhook environment variable does not contain a valid HTTPS webhook URL"}
+		}
+	}
 
 	configured := cfg.Projects
 	if selectedProject != "" {
@@ -241,6 +298,20 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 	if resolvedHistoryPath != "" {
 		if err := history.Append(resolvedHistoryPath, history.Run{StartedAt: started, FinishedAt: finished, Results: results}, historyLimit); err != nil {
 			return &commandError{stableCode: "internal_error", message: "record local history: " + err.Error()}
+		}
+	}
+	if configuredNotifications {
+		events, err := notification.Advance(resolvedNotificationState, finished, results, notificationThreshold)
+		if err != nil {
+			return &commandError{stableCode: "internal_error", message: "update notification state: " + err.Error()}
+		}
+		for _, event := range events {
+			if err := a.dependencies.DeliverNotification(ctx, webhookURL, event); err != nil {
+				return &commandError{stableCode: "internal_error", message: "deliver repeated-failure notification"}
+			}
+			if err := notification.MarkDelivered(resolvedNotificationState, event); err != nil {
+				return &commandError{stableCode: "internal_error", message: "record notification delivery: " + err.Error()}
+			}
 		}
 	}
 	if mode == "json" {

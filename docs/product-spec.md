@@ -908,6 +908,17 @@ pending before outbound delivery and marked delivered afterward, so a process
 failure between those operations can produce a duplicate but cannot silently
 lose an event. The durable Cloudflare KV backend remains separate roadmap work.
 
+`run` and `doctor` enable delivery only when `--notification-state PATH` and
+`--notification-webhook-env ENV` are both explicit. `--notify-after N` defaults
+to 3 and accepts 1 through 100. The environment value must be an absolute HTTPS
+URL without user information or a fragment; the URL is never accepted directly
+on the command line, persisted, or echoed. Delivery uses a fixed, versioned JSON
+event containing only project name, stable status, episode, streak count, and
+observation time. Redirects are rejected, requests are capped at 10 seconds,
+response bodies are never copied, and only `2xx` is success. Delivery or state
+failures are process-wide internal failures. This version sends failure events
+only, not recovery notifications.
+
 ## 14. GitHub Actions integration
 
 `sb-heartbeat install github` generates `.github/workflows/sb-heartbeat.yml` with:
@@ -1308,7 +1319,7 @@ verify provenance.
 
 - [x] Local status history with atomic writes and no sensitive data.
 - [x] Richer GitHub annotations and optional durable result artifacts.
-- [ ] Notifications after configurable repeated failures.
+- [x] Notifications after configurable repeated failures.
 - [ ] Prometheus or OpenTelemetry-compatible metrics export.
 - [ ] Optional durable backends such as Cloudflare KV.
 
