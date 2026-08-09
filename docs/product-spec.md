@@ -1248,6 +1248,22 @@ without weakening that path.
       multi-architecture builds.
 - [ ] `systemd` timer and macOS `launchd` generators.
 
+Release tags publish the already-tested Dockerfile as the exact tag
+`ghcr.io/croutoncreations/sb-heartbeat:<release-tag>` for `linux/amd64` and
+`linux/arm64`. Publication runs only after the binary release and all of its
+release gates. The workflow uses only the repository-scoped `GITHUB_TOKEN`,
+exact commit-pinned actions, maximum BuildKit provenance, an SBOM, and a GitHub
+artifact attestation bound to the manifest digest. The workflow pushes the
+untagged content-addressed digest first, successfully attests it, and only then
+promotes it to the advertised version tag. Per-tag concurrency and checks both
+before the build and immediately before promotion refuse replacement of an
+existing version. Only an explicit registry not-found result counts as absence;
+authentication, availability, rate-limit, and other indeterminate inspection
+failures stop publication. It does not publish a mutable `latest` tag or change
+package visibility. Documentation tells owners to make the initially private
+package public once and tells consumers to prefer exact versions or digests and
+verify provenance.
+
 ### Observability
 
 - [x] Local status history with atomic writes and no sensitive data.
@@ -1266,7 +1282,8 @@ without weakening that path.
 
 ### Distribution and agent experience
 
-- [ ] Homebrew tap and GHCR image.
+- [ ] Homebrew tap (requires a separately named distribution repository).
+- [x] GHCR multi-architecture image with SBOM and build provenance.
 - [x] Versioned `go install`.
 - [ ] Signed artifacts and build provenance.
 - [x] Shell completions for Bash, Zsh, Fish, and PowerShell.

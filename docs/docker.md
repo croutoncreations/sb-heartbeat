@@ -58,3 +58,34 @@ scripts/integration-docker.sh
 The script does not push an image or contact Supabase. It uses a digest-pinned
 BuildKit executor, collision-checked random resource names, and creation flags
 so cleanup removes only the temporary builder, image, and archive it created.
+
+## Release images
+
+Release tags publish the same shell-free image to GitHub Container Registry for
+`linux/amd64` and `linux/arm64`, after the binary release and all release gates
+succeed. Pull an exact release tag; no mutable `latest` tag is published:
+
+```bash
+docker pull ghcr.io/croutoncreations/sb-heartbeat:v0.1.2
+```
+
+For deployment, resolve that tag and pin the resulting digest, for example
+`ghcr.io/croutoncreations/sb-heartbeat@sha256:...`. Each release build includes
+a BuildKit provenance record and SBOM, plus a GitHub artifact attestation bound
+to the pushed manifest digest. After authenticating Docker to GHCR, verify it
+against this repository:
+
+```bash
+gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.1.2 -R croutoncreations/sb-heartbeat
+```
+
+The release workflow pushes content by digest, attests that digest, and only
+then creates the advertised version tag. It refuses to replace an existing
+version tag, and it treats authentication, registry, rate-limit, and network
+inspection failures as fatal rather than assuming the tag is absent.
+Publication uses the repository-scoped `GITHUB_TOKEN`; it does not require a
+personal access token. The first package is expected to be private. A
+repository owner must make the package visibility public once and confirm it is
+linked to this repository before advertising anonymous pulls. Visibility is
+repository administration, not something the release workflow changes
+automatically.
