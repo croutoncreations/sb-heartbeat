@@ -100,6 +100,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [Security model](docs/security.md)
 - [GitHub Actions](docs/github-actions.md)
 - [Local cron](docs/local-cron.md)
+- [Docker](docs/docker.md)
 - [Agent installation](docs/agent-install.md)
 - [Agent prompts](docs/agent-prompts.md)
 - [Coding-agent installation evaluation](docs/agent-evaluation.md)

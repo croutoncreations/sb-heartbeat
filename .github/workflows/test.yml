@@ -46,3 +46,9 @@ jobs:
         env:
           SB_HEARTBEAT_ALLOW_DISPOSABLE_DATABASE: "1"
           SB_HEARTBEAT_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+
+  docker-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/integration-docker.sh

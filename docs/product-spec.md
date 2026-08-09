@@ -21,8 +21,9 @@ The product emphasizes:
 - no hosted credential custody.
 
 SB Heartbeat is not a hosted service. Users run it through infrastructure they
-already control, initially GitHub Actions or a local scheduler. Cloudflare
-Workers, Docker, and additional schedulers remain planned 1.0 targets.
+already control through GitHub Actions, a local scheduler, or the non-root
+container image. Cloudflare Workers and additional schedulers remain planned
+1.0 targets.
 
 Product name: **SB Heartbeat**. The repository and package name are
 `sb-heartbeat`; PostgreSQL objects use the identifier-safe `sb_heartbeat`
@@ -122,7 +123,7 @@ The following remain part of the product plan but are deferred from the MVP:
 - RPC queries with explicit warnings;
 - constrained raw PostgREST paths;
 - Cloudflare Worker and Cron Trigger generation;
-- Docker image and multi-architecture publishing;
+- GHCR publication of the multi-architecture Docker image;
 - local status history and optional durable result backends;
 - failure notifications;
 - backup checks and archive guidance;
@@ -1099,12 +1100,16 @@ project and never print keys.
 The tag release workflow calls the complete reusable test workflow and requires
 the hosted Supabase integration job to pass before artifact publication. Missing
 integration secrets fail closed rather than skipping release verification.
+The reusable workflow also builds the container, runs shell-free commands with
+a read-only filesystem as its numeric non-root user, and exports an unpublished
+Linux `amd64`/`arm64` OCI index.
 
 ## 19. Release and distribution
 
 Initial releases should provide GitHub release artifacts for macOS, Linux, and
-Windows on `amd64` and `arm64`, plus checksums. Homebrew, `go install`, GHCR,
-signatures, and provenance are 1.0 targets and may be added incrementally.
+Windows on `amd64` and `arm64`, plus checksums. Versioned `go install` is
+supported. Homebrew, GHCR publication, signatures, and provenance are 1.0
+targets and may be added incrementally.
 
 Before initializing the public Go module path or embedding release URLs in a
 generator, the project must complete its name, repository, and basic trademark
@@ -1192,7 +1197,7 @@ without weakening that path.
 
 - [ ] Cloudflare Worker generator and Cron Triggers.
 - [ ] Decide how to prevent drift between Go and generated Worker validation.
-- [ ] Docker image, non-root execution, read-only filesystem support, and
+- [x] Docker image, non-root execution, read-only filesystem support, and
       multi-architecture builds.
 - [ ] `systemd` timer and macOS `launchd` generators.
 
@@ -1214,7 +1219,8 @@ without weakening that path.
 
 ### Distribution and agent experience
 
-- [ ] Homebrew tap, `go install`, and GHCR image.
+- [ ] Homebrew tap and GHCR image.
+- [x] Versioned `go install`.
 - [ ] Signed artifacts and build provenance.
 - [x] Shell completions for Bash, Zsh, Fish, and PowerShell.
 - [x] JSON Schema and editor integration.
