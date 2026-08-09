@@ -67,6 +67,12 @@ and `secrets.SUPABASE_ANON_KEY`. Each binding's optional `github` field accepts
 only `variable` or `secret`; omitted fields preserve the safe URL-variable and
 API-key-secret defaults. The wizard prompts for both sources, and noninteractive
 setup exposes `--url-github-source` and `--api-key-github-source`.
+Any configuration that explicitly writes a `github` source requires a workflow
+pinned to SB Heartbeat `v0.2.0` or newer, including an explicit spelling of a
+default. The generator rejects older release pins instead of creating an
+incompatible workflow. Generated default URL-variable and API-key-secret
+configurations remain compatible with `v0.1.1` because they omit the source
+fields.
 
 ### Add bindings with GitHub CLI
 

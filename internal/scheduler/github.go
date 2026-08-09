@@ -34,6 +34,9 @@ func GitHub(cfg config.Config, version, configPath string) ([]byte, error) {
 	if !releaseVersionPattern.MatchString(version) {
 		return nil, errors.New("SB Heartbeat version must be an exact release tag such as v0.1.0")
 	}
+	if usesExplicitGitHubSources(cfg) && !supportsGitHubSources(version) {
+		return nil, errors.New("explicit GitHub binding sources require SB Heartbeat v0.2.0 or newer")
+	}
 	if configPath == "" || path.IsAbs(configPath) || path.Clean(configPath) != configPath ||
 		!configPathPattern.MatchString(configPath) || configPath[0] == '-' || configPath == "." ||
 		configPath == ".." || strings.HasPrefix(configPath, "../") {
@@ -60,6 +63,26 @@ func GitHub(cfg config.Config, version, configPath string) ([]byte, error) {
 		return nil, fmt.Errorf("render GitHub workflow: %w", err)
 	}
 	return buffer.Bytes(), nil
+}
+
+func usesExplicitGitHubSources(cfg config.Config) bool {
+	for _, project := range cfg.Projects {
+		if project.URL.GitHub != config.GitHubVariable || project.APIKey.GitHub != config.GitHubSecret ||
+			project.URL.GitHubSourceExplicit() || project.APIKey.GitHubSourceExplicit() {
+			return true
+		}
+	}
+	return false
+}
+
+func supportsGitHubSources(version string) bool {
+	parts := strings.Split(strings.TrimPrefix(version, "v"), ".")
+	major, majorErr := strconv.Atoi(parts[0])
+	minor, minorErr := strconv.Atoi(parts[1])
+	if majorErr != nil || minorErr != nil {
+		return false
+	}
+	return major > 0 || minor >= 2
 }
 
 func workflowTimeoutMinutes(cfg config.Config) int {

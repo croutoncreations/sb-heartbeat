@@ -54,8 +54,47 @@ type Project struct {
 }
 
 type EnvReference struct {
-	Env    string `yaml:"env,omitempty"`
-	GitHub string `yaml:"github,omitempty"`
+	Env            string `yaml:"env,omitempty"`
+	GitHub         string `yaml:"github,omitempty"`
+	githubExplicit bool
+}
+
+// GitHubSourceExplicit reports whether the configuration document contained a
+// github field. This syntax distinction matters when generating automation for
+// readers published before the field existed.
+func (r EnvReference) GitHubSourceExplicit() bool {
+	return r.githubExplicit
+}
+
+func (r *EnvReference) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return errors.New("environment reference must be a mapping")
+	}
+	seen := make(map[string]struct{}, len(node.Content)/2)
+	for index := 0; index < len(node.Content); index += 2 {
+		key := node.Content[index].Value
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("mapping key %q already defined", key)
+		}
+		seen[key] = struct{}{}
+		switch key {
+		case "env":
+		case "github":
+			r.githubExplicit = true
+		default:
+			return fmt.Errorf("field %s not found in type config.EnvReference", key)
+		}
+	}
+	var values struct {
+		Env    string `yaml:"env,omitempty"`
+		GitHub string `yaml:"github,omitempty"`
+	}
+	if err := node.Decode(&values); err != nil {
+		return err
+	}
+	r.Env = values.Env
+	r.GitHub = values.GitHub
+	return nil
 }
 
 type wireConfig struct {
@@ -150,7 +189,14 @@ func Marshal(cfg Config) ([]byte, error) {
 		Scheduler: wireScheduler{Cron: cfg.Scheduler.Cron},
 	}
 	for _, project := range cfg.Projects {
-		wire.Projects = append(wire.Projects, wireProject(project))
+		encodedProject := wireProject(project)
+		if encodedProject.URL.GitHub == GitHubVariable {
+			encodedProject.URL.GitHub = ""
+		}
+		if encodedProject.APIKey.GitHub == GitHubSecret {
+			encodedProject.APIKey.GitHub = ""
+		}
+		wire.Projects = append(wire.Projects, encodedProject)
 	}
 	var buffer bytes.Buffer
 	fmt.Fprintf(&buffer, "# yaml-language-server: $schema=%s\n", SchemaURL)
@@ -204,7 +250,8 @@ func fromWire(w wireConfig) (Config, error) {
 		cfg.Scheduler.Cron = w.Scheduler.Cron
 	}
 	for _, p := range w.Projects {
-		cfg.Projects = append(cfg.Projects, withImplicitBindings(Project(p)))
+		project := Project(p)
+		cfg.Projects = append(cfg.Projects, withImplicitBindings(project))
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -293,15 +340,13 @@ func (c Config) Validate() error {
 			label, env := binding.label, binding.env
 			if !envNamePattern.MatchString(env) {
 				problems = append(problems, prefix+"."+label+".env is invalid")
-				continue
-			}
-			if binding.github != GitHubVariable && binding.github != GitHubSecret {
-				problems = append(problems, prefix+"."+label+".github must be variable or secret")
-			}
-			if previous, exists := bindings[env]; exists {
+			} else if previous, exists := bindings[env]; exists {
 				problems = append(problems, prefix+"."+label+".env duplicates "+previous)
 			} else {
 				bindings[env] = prefix + "." + label + ".env"
+			}
+			if binding.github != GitHubVariable && binding.github != GitHubSecret {
+				problems = append(problems, prefix+"."+label+".github must be variable or secret")
 			}
 		}
 	}

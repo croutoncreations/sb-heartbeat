@@ -16,10 +16,6 @@ scheduler:
   cron: 37 3,11,19 * * *
 projects:
   - name: demo
-    url:
-      github: variable
-    api_key:
-      github: secret
 ```
 
 Configuration is strict: unknown and duplicate YAML keys are rejected. The MVP
@@ -41,6 +37,12 @@ These are binding names, not credential values. In generated GitHub workflows,
 `github` selects `variable` (`vars.NAME`) or `secret` (`secrets.NAME`) for each
 binding. It defaults to `variable` for URLs and `secret` for API keys. Explicit
 names and sources can reuse existing repository bindings.
+
+Generated YAML omits those two default `github` fields so older configuration-
+version-1 readers, including `v0.1.1`, remain compatible. Any explicitly
+written `github` field requires SB Heartbeat `v0.2.0` or newer in generated
+automation. The CLI rejects an older workflow pin even when an explicit field
+spells the default source.
 
 ## Editor validation
 

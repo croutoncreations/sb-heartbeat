@@ -72,7 +72,8 @@ func TestLLMsDiscoveryLinksResolveToExpectedDocumentation(t *testing.T) {
 		"docs/security.md": false, "docs/github-actions.md": false,
 		"docs/troubleshooting.md": false, "docs/product-spec.md": false,
 		"docs/agent-install.md": false, "docs/agent-prompts.md": false,
-		"docs/local-cron.md": false,
+		"docs/agent-evaluation.md": false, "docs/local-cron.md": false,
+		"docs/docker.md": false,
 	}
 	if len(links) != len(want) {
 		t.Fatalf("documentation links = %d, want %d", len(links), len(want))

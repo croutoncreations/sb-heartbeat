@@ -489,6 +489,10 @@ Configuration requirements:
 - Omitted `url.github` and `api_key.github` bindings map to GitHub Actions
   `variable` and `secret` storage respectively. Either binding can explicitly
   select `variable` or `secret` to reuse an existing repository binding.
+- Generated YAML omits default GitHub source fields for compatibility with
+  older configuration-version-1 readers. Any explicitly written source field,
+  including an explicit default, requires a workflow runtime of `v0.2.0` or
+  newer.
 - Durations and retry counts are bounded.
 - A published Draft 2020-12 JSON Schema mirrors configuration version 1 and is
   referenced by generated YAML through the standard YAML language-server
@@ -1226,7 +1230,8 @@ without weakening that path.
 - [x] JSON Schema and editor integration.
 - [x] Per-binding GitHub variable or secret selection.
 - [x] `llms.txt`; add `llms-full.txt` only if consumers demonstrate value.
-- [x] Agent installation tests with at least two coding agents.
+- [ ] Agent installation tests with at least two coding agents (rerun required
+      after the v0.1.1 compatibility correction).
 - [x] Copyable prompts without modifying downstream `AGENTS.md` files.
 
 ## 23. Risks and mitigations

@@ -2,6 +2,12 @@
 
 Last run: 2026-08-08
 
+> **Superseded:** final compatibility review proved that the retained generated
+> configuration could not be parsed by its pinned `v0.1.1` runtime. These runs
+> remain historical evidence only. The evaluation must be rerun after the
+> compatibility correction and must execute the generated config with the
+> actual pinned release binary before the roadmap item is complete.
+
 SB Heartbeat's published onboarding guidance was exercised by two fresh coding
 agents in independent, disposable local Git repositories. Each agent read the
 exact current [`agent-install.md`](agent-install.md) and **Prepare an

@@ -29,7 +29,9 @@ Agent safety contract:
 
 - [Agent installation guide](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-install.md): Ordered installation procedure and prohibited actions.
 - [Copyable agent prompts](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-prompts.md): Prepare, verify, and local-cron tasks with bounded authority.
+- [Coding-agent evaluation](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-evaluation.md): Reproducible two-agent installation evidence and retained sanitized artifacts.
 
 ## Optional
 
 - [Local cron](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/local-cron.md): Read-only cron suggestion generation, environment handling, logs, and monitoring.
+- [Container](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/docker.md): Hardened local container build, read-only runtime, and multi-architecture verification.

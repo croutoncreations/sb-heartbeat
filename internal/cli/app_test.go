@@ -599,7 +599,7 @@ func TestNonInteractiveInitConfiguresGitHubBindingSources(t *testing.T) {
 		"--project-name", "demo", "--url-env", "DEMO_URL", "--api-key-env", "DEMO_KEY",
 		"--url-github-source", "secret", "--api-key-github-source", "variable",
 		"--scheduler", "github", "--workflow-output", workflow,
-		"--sb-heartbeat-version", "v0.1.0",
+		"--sb-heartbeat-version", "v0.2.0",
 	}
 	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
 		t.Fatalf("init code = %d, stderr = %q", code, h.stderr.String())

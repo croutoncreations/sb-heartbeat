@@ -83,7 +83,10 @@ func TestGitHubWorkflowUsesConfiguredBindingSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow, err := scheduler.GitHub(cfg, "v0.1.0", "sb-heartbeat.yaml")
+	if _, err := scheduler.GitHub(cfg, "v0.1.1", "sb-heartbeat.yaml"); err == nil || !strings.Contains(err.Error(), "v0.2.0") {
+		t.Fatalf("GitHub(v0.1.1 custom sources) error = %v", err)
+	}
+	workflow, err := scheduler.GitHub(cfg, "v0.2.0", "sb-heartbeat.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +94,21 @@ func TestGitHubWorkflowUsesConfiguredBindingSources(t *testing.T) {
 	if !strings.Contains(text, "DEMO_URL: ${{ secrets.DEMO_URL }}") ||
 		!strings.Contains(text, "DEMO_KEY: ${{ vars.DEMO_KEY }}") {
 		t.Fatalf("configured GitHub bindings missing\n%s", text)
+	}
+}
+
+func TestGitHubWorkflowRejectsExplicitDefaultSourcesForLegacyRuntime(t *testing.T) {
+	for _, githubValue := range []string{"variable", "null", `""`, ""} {
+		t.Run("value="+githubValue, func(t *testing.T) {
+			input := "version: 1\nprojects:\n  - name: demo\n    url:\n      env: DEMO_URL\n      github: " + githubValue + "\n    api_key: {env: DEMO_KEY}\n"
+			cfg, err := config.Load(strings.NewReader(input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := scheduler.GitHub(cfg, "v0.1.1", "sb-heartbeat.yaml"); err == nil || !strings.Contains(err.Error(), "v0.2.0") {
+				t.Fatalf("GitHub(v0.1.1 explicit source) error = %v", err)
+			}
+		})
 	}
 }
 

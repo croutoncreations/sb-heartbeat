@@ -21,6 +21,25 @@ jobs:
       - run: go test -race ./...
       - run: go vet ./...
 
+  version-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify and extract v0.1.1
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --silent --show-error --location --output sb-heartbeat_0.1.1_linux_amd64.tar.gz \
+            https://github.com/croutoncreations/sb-heartbeat/releases/download/v0.1.1/sb-heartbeat_0.1.1_linux_amd64.tar.gz
+          echo '8785aa8bb3c0549b204bd9e3f5720412fa05af8f06141f0070f48be97221b314  sb-heartbeat_0.1.1_linux_amd64.tar.gz' | sha256sum --check
+          mkdir legacy
+          tar -xzf sb-heartbeat_0.1.1_linux_amd64.tar.gz -C legacy
+      - run: go build -trimpath -o "${RUNNER_TEMP}/sb-heartbeat-current" ./cmd/sb-heartbeat
+      - run: scripts/integration-version-compatibility.sh "${RUNNER_TEMP}/legacy/sb-heartbeat" "${RUNNER_TEMP}/sb-heartbeat-current"
+
   postgres-integration:
     runs-on: ubuntu-latest
     services:

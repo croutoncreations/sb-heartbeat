@@ -4,13 +4,14 @@ SB Heartbeat's container is a shell-free `scratch` image. It runs as numeric
 user `65532:65532`, needs no writable filesystem, and includes only the static
 CLI binary plus CA certificates for HTTPS.
 
-No container image is published during local development. Build an exact local
-version from a reviewed source checkout:
+No container image is published during local development. Build a development
+image from the current reviewed source checkout without claiming a released
+version:
 
 ```bash
 docker build \
-  --build-arg VERSION=v0.1.1 \
-  --tag sb-heartbeat:v0.1.1 \
+  --build-arg VERSION=devel \
+  --tag sb-heartbeat:devel \
   .
 ```
 
@@ -23,7 +24,7 @@ docker run --rm --read-only \
   --volume "$PWD/sb-heartbeat.yaml:/config/sb-heartbeat.yaml:ro" \
   --env SB_HEARTBEAT_MY_STAGE_URL \
   --env SB_HEARTBEAT_MY_STAGE_API_KEY \
-  sb-heartbeat:v0.1.1 \
+  sb-heartbeat:devel \
   --config /config/sb-heartbeat.yaml doctor
 ```
 
@@ -39,7 +40,7 @@ Linux targets without publishing them:
 ```bash
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --build-arg VERSION=v0.1.1 \
+  --build-arg VERSION=devel \
   --output type=oci,dest=/tmp/sb-heartbeat-multiarch.tar \
   .
 ```

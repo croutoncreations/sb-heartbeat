@@ -290,8 +290,8 @@ func TestAgentInstallationEvaluationIsIndexedAndTrackedAsComplete(t *testing.T) 
 		t.Fatal("README does not index the evaluation")
 	}
 	spec := readEvaluationFile(t, root, "docs", "product-spec.md")
-	if !strings.Contains(spec, "- [x] Agent installation tests with at least two coding agents.") {
-		t.Fatal("product roadmap does not mark the two-agent evaluation complete")
+	if !strings.Contains(spec, "- [ ] Agent installation tests with at least two coding agents") {
+		t.Fatal("product roadmap does not track the required evaluation rerun")
 	}
 }
 

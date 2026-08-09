@@ -114,6 +114,9 @@ projects:
 	if defaulted.Projects[0].URL.GitHub != "variable" || defaulted.Projects[0].APIKey.GitHub != "secret" {
 		t.Fatalf("default GitHub sources = %+v", defaulted.Projects[0])
 	}
+	if defaulted.Projects[0].URL.GitHubSourceExplicit() || defaulted.Projects[0].APIKey.GitHubSourceExplicit() {
+		t.Fatal("omitted GitHub sources marked explicit")
+	}
 
 	explicit, err := config.Load(strings.NewReader(`
 version: 1
@@ -127,6 +130,9 @@ projects:
 	}
 	if explicit.Projects[0].URL.GitHub != "secret" || explicit.Projects[0].APIKey.GitHub != "variable" {
 		t.Fatalf("explicit GitHub sources = %+v", explicit.Projects[0])
+	}
+	if !explicit.Projects[0].URL.GitHubSourceExplicit() || !explicit.Projects[0].APIKey.GitHubSourceExplicit() {
+		t.Fatal("configured GitHub sources not marked explicit")
 	}
 }
 
@@ -156,6 +162,27 @@ func TestMarshalIncludesPublishedSchemaDirective(t *testing.T) {
 	}
 	if _, err := config.Load(strings.NewReader(string(encoded))); err != nil {
 		t.Fatalf("Load(Marshal()) error = %v", err)
+	}
+	if strings.Contains(string(encoded), "github:") {
+		t.Fatalf("Marshal() emits default GitHub sources that older version-1 readers reject:\n%s", encoded)
+	}
+}
+
+func TestMarshalIncludesOnlyNonDefaultGitHubBindingSources(t *testing.T) {
+	cfg, err := config.New(config.Project{
+		Name:   "demo",
+		URL:    config.EnvReference{GitHub: config.GitHubSecret},
+		APIKey: config.EnvReference{GitHub: config.GitHubVariable},
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := config.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(encoded), "github:") != 2 || !strings.Contains(string(encoded), "github: secret") || !strings.Contains(string(encoded), "github: variable") {
+		t.Fatalf("Marshal() custom sources =\n%s", encoded)
 	}
 }
 
@@ -423,6 +450,27 @@ func TestLoadRejectsInvalidNamesBindingsAndBounds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if _, err := config.Load(strings.NewReader(input)); err == nil {
 				t.Fatal("Load() error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestValidationAggregatesEnvironmentAndGitHubSourceErrors(t *testing.T) {
+	input := strings.Replace(validConfig, "env: DEMO_SUPABASE_URL", "env: invalid-name\n      github: artifact", 1)
+	_, err := config.Load(strings.NewReader(input))
+	if err == nil || !strings.Contains(err.Error(), "url.env") || !strings.Contains(err.Error(), "url.github") {
+		t.Fatalf("Load() error = %v, want both binding errors", err)
+	}
+}
+
+func TestEnvironmentReferenceRemainsStrictWhileTrackingFieldPresence(t *testing.T) {
+	for name, input := range map[string]string{
+		"unknown":   strings.Replace(validConfig, "env: DEMO_SUPABASE_URL", "env: DEMO_SUPABASE_URL\n      artifact: secret", 1),
+		"duplicate": strings.Replace(validConfig, "env: DEMO_SUPABASE_URL", "env: DEMO_SUPABASE_URL\n      github: variable\n      github: secret", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := config.Load(strings.NewReader(input)); err == nil {
+				t.Fatal("Load() accepted a non-strict environment reference")
 			}
 		})
 	}
