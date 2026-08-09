@@ -881,6 +881,33 @@ guarantee atomic replacement there; requesting it fails before network access.
 On supported systems, history failures are process-wide internal failures with
 exit code 3. Preflight failures do not create history entries.
 
+### 13.4 Repeated-failure notification state
+
+Notifications use a separate, versioned local state snapshot rather than
+inferring delivery from console output or status history. State is tracked per
+configured project. Every unhealthy result increments its consecutive-failure
+count regardless of a change in stable failure code; a healthy result resets
+the episode. Crossing the configured threshold creates one pending failure
+notification. Successful delivery suppresses further notifications until a
+healthy result resets the project. Failed or interrupted delivery remains
+pending and is retried on a later observed failure.
+
+The snapshot contains only project name, a monotonic failure-episode counter,
+stable status, observation time, consecutive-failure count, and
+pending/delivered booleans. The episode counter makes delivery
+acknowledgements non-replayable across a healthy reset. State never contains
+URLs, environment names or values, keys, headers, response bodies, diagnostic
+messages, or webhook destinations. Inputs use an exact schema and stable-status
+allowlist. Files are capped at 256 KiB, mode `0600`, and atomically replaced;
+symlinks, non-regular files, permissive modes, duplicate or unknown JSON keys,
+invalid values, unsupported schemas, and oversized content fail closed.
+
+Local notification state has the same single-writer and POSIX-only limitations
+as local status history. Delivery is at least once: state is persisted as
+pending before outbound delivery and marked delivered afterward, so a process
+failure between those operations can produce a duplicate but cannot silently
+lose an event. The durable Cloudflare KV backend remains separate roadmap work.
+
 ## 14. GitHub Actions integration
 
 `sb-heartbeat install github` generates `.github/workflows/sb-heartbeat.yml` with:
