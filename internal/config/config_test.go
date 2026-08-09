@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/croutoncreations/sb-heartbeat/internal/config"
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+	"gopkg.in/yaml.v3"
 )
 
 const validConfig = `
@@ -157,6 +159,9 @@ func TestPublishedSchemaCoversStrictConfigurationContract(t *testing.T) {
 		t.Fatalf("version const = %v", version["const"])
 	}
 	defaults := schemaObject(t, properties, "defaults")
+	if got := defaults["type"]; !schemaArrayEquals(got, "object", "null") {
+		t.Fatalf("defaults type = %v", got)
+	}
 	if defaults["additionalProperties"] != false {
 		t.Fatalf("defaults additionalProperties = %v", defaults["additionalProperties"])
 	}
@@ -164,7 +169,7 @@ func TestPublishedSchemaCoversStrictConfigurationContract(t *testing.T) {
 	assertSchemaNumber(t, schemaObject(t, defaultProperties, "retries"), 0, 3)
 	assertSchemaNumber(t, schemaObject(t, defaultProperties, "concurrency"), 1, 16)
 	output := schemaObject(t, defaultProperties, "output")
-	if got := output["enum"]; !schemaArrayEquals(got, "text", "json") {
+	if got := output["enum"]; !schemaArrayContains(got, "text", "json", "", nil) {
 		t.Fatalf("output enum = %v", got)
 	}
 	projects := schemaObject(t, properties, "projects")
@@ -184,14 +189,50 @@ func TestPublishedSchemaCoversStrictConfigurationContract(t *testing.T) {
 	}
 	for _, binding := range []string{"url", "api_key"} {
 		ref := schemaObject(t, projectProperties, binding)
+		if got := ref["type"]; !schemaArrayEquals(got, "object", "null") {
+			t.Fatalf("%s type = %v", binding, got)
+		}
 		if ref["additionalProperties"] != false {
 			t.Fatalf("%s additionalProperties = %v", binding, ref["additionalProperties"])
 		}
 		env := schemaObject(t, schemaObject(t, ref, "properties"), "env")
-		if env["pattern"] != "^[A-Z_][A-Z0-9_]{0,126}$" {
+		if env["pattern"] != "^$|^[A-Z_][A-Z0-9_]{0,126}$" {
 			t.Fatalf("%s env pattern = %v", binding, env["pattern"])
 		}
 	}
+}
+
+func TestPublishedSchemaAcceptsCLIAcceptedExplicitOmissions(t *testing.T) {
+	const input = `
+version: 1
+defaults:
+  timeout: null
+  retries: null
+  retry_backoff: ""
+  concurrency: null
+  output: ""
+scheduler:
+  cron: null
+projects:
+  - name: demo
+    url:
+      env: null
+    api_key: null
+`
+	_, err := config.Load(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	validatePublishedSchema(t, input)
+}
+
+func TestPublishedSchemaRejectsUnknownFields(t *testing.T) {
+	validatePublishedSchemaError(t, `
+version: 1
+projects:
+  - name: demo
+    query: users
+`)
 }
 
 func schemaObject(t *testing.T, parent map[string]any, key string) map[string]any {
@@ -221,6 +262,71 @@ func schemaArrayEquals(value any, want ...string) bool {
 		}
 	}
 	return true
+}
+
+func schemaArrayContains(value any, want ...any) bool {
+	items, ok := value.([]any)
+	if !ok || len(items) != len(want) {
+		return false
+	}
+	for _, wanted := range want {
+		found := false
+		for _, item := range items {
+			if item == wanted {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func validatePublishedSchema(t *testing.T, input string) {
+	t.Helper()
+	if err := compiledPublishedSchema(t).Validate(decodeYAML(t, input)); err != nil {
+		t.Fatalf("schema validation error = %v", err)
+	}
+}
+
+func validatePublishedSchemaError(t *testing.T, input string) {
+	t.Helper()
+	if err := compiledPublishedSchema(t).Validate(decodeYAML(t, input)); err == nil {
+		t.Fatal("schema validation error = nil, want rejection")
+	}
+}
+
+func compiledPublishedSchema(t *testing.T) *jsonschema.Schema {
+	t.Helper()
+	path := filepath.Join("..", "..", "schema", "sb-heartbeat.schema.json")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	var document any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		t.Fatalf("schema JSON error = %v", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource(config.SchemaURL, document); err != nil {
+		t.Fatalf("AddResource() error = %v", err)
+	}
+	schema, err := compiler.Compile(config.SchemaURL)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	return schema
+}
+
+func decodeYAML(t *testing.T, input string) any {
+	t.Helper()
+	var document any
+	if err := yaml.Unmarshal([]byte(input), &document); err != nil {
+		t.Fatalf("YAML decode error = %v", err)
+	}
+	return document
 }
 
 func TestLoadRejectsCollidingImplicitEnvironmentBindings(t *testing.T) {

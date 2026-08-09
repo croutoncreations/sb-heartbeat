@@ -49,7 +49,9 @@ example above; YAML comments do not change CLI behavior.
 The schema mirrors field names, types, enums, numeric bounds, name patterns,
 required project structure, and strict unknown-field handling. The CLI remains
 authoritative for Go-duration bounds, full cron parsing, uniqueness across
-projects, and collisions between derived environment names.
+projects, and collisions between derived environment names. For compatibility
+with configuration version 1, explicit YAML `null` and quoted empty values in
+optional/defaulted fields are represented as omissions, matching the CLI.
 
 Runtime ranges:
 

@@ -16,41 +16,41 @@
     },
     "defaults": {
       "description": "Runtime defaults shared by all projects.",
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "properties": {
         "timeout": {
           "description": "Per-attempt Go duration from 1s through 60s.",
-          "type": "string",
-          "minLength": 1,
+          "type": ["string", "null"],
           "default": "10s"
         },
         "retries": {
           "description": "Retries after the first attempt.",
-          "type": "integer",
+          "type": ["integer", "null"],
           "minimum": 0,
           "maximum": 3,
           "default": 1
         },
         "retry_backoff": {
           "description": "Initial Go duration for exponential retry backoff, from 100ms through 30s.",
-          "type": "string",
-          "minLength": 1,
+          "type": ["string", "null"],
           "default": "2s"
         },
         "concurrency": {
           "description": "Maximum concurrently checked projects.",
-          "type": "integer",
+          "type": ["integer", "null"],
           "minimum": 1,
           "maximum": 16,
           "default": 4
         },
         "output": {
           "description": "Default CLI output format.",
-          "type": "string",
+          "type": ["string", "null"],
           "enum": [
             "text",
-            "json"
+            "json",
+            "",
+            null
           ],
           "default": "text"
         }
@@ -58,13 +58,12 @@
     },
     "scheduler": {
       "description": "Scheduler generation settings.",
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "properties": {
         "cron": {
           "description": "Five-field POSIX cron expression.",
-          "type": "string",
-          "minLength": 1,
+          "type": ["string", "null"],
           "default": "37 3,11,19 * * *"
         }
       }
@@ -87,25 +86,25 @@
           },
           "url": {
             "description": "Environment binding for the hosted Supabase project URL. Omit it to derive a name from the project label.",
-            "type": "object",
+            "type": ["object", "null"],
             "additionalProperties": false,
             "properties": {
               "env": {
                 "description": "Environment variable containing the project URL.",
-                "type": "string",
-                "pattern": "^[A-Z_][A-Z0-9_]{0,126}$"
+                "type": ["string", "null"],
+                "pattern": "^$|^[A-Z_][A-Z0-9_]{0,126}$"
               }
             }
           },
           "api_key": {
             "description": "Environment binding for a publishable or legacy anon key. Omit it to derive a name from the project label.",
-            "type": "object",
+            "type": ["object", "null"],
             "additionalProperties": false,
             "properties": {
               "env": {
                 "description": "Environment variable containing the low-privilege API key.",
-                "type": "string",
-                "pattern": "^[A-Z_][A-Z0-9_]{0,126}$"
+                "type": ["string", "null"],
+                "pattern": "^$|^[A-Z_][A-Z0-9_]{0,126}$"
               }
             }
           }
