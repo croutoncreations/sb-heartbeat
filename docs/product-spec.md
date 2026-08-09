@@ -485,7 +485,11 @@ Configuration requirements:
   rejects collisions after normalization, such as `a-b` and `a_b`.
 - Omitted `url.env` and `api_key.env` bindings use the suggested names below.
 - Durations and retry counts are bounded.
-- A published JSON Schema is planned for 1.0 and may be added earlier if cheap.
+- A published Draft 2020-12 JSON Schema mirrors configuration version 1 and is
+  referenced by generated YAML through the standard YAML language-server
+  directive. The CLI remains authoritative for semantic validation that JSON
+  Schema cannot express reliably, including Go-duration bounds, full cron
+  parsing, project uniqueness, and derived environment-name collisions.
 
 Suggested implicit environment variable names for `travally-staging` are:
 
@@ -1193,7 +1197,7 @@ without weakening that path.
 - [ ] Homebrew tap, `go install`, and GHCR image.
 - [ ] Signed artifacts and build provenance.
 - [ ] Shell completions.
-- [ ] JSON Schema and editor integration.
+- [x] JSON Schema and editor integration.
 - [ ] `llms.txt`; add `llms-full.txt` only if consumers demonstrate value.
 - [ ] Agent installation tests with at least two coding agents.
 - [ ] Copyable prompts without modifying downstream `AGENTS.md` files.

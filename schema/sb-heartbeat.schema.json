@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/croutoncreations/sb-heartbeat/main/schema/sb-heartbeat.schema.json",
+  "title": "SB Heartbeat configuration",
+  "description": "Configuration for least-privilege Supabase database heartbeats. The CLI remains authoritative for semantic validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "projects"
+  ],
+  "properties": {
+    "version": {
+      "description": "Configuration schema version.",
+      "const": 1
+    },
+    "defaults": {
+      "description": "Runtime defaults shared by all projects.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout": {
+          "description": "Per-attempt Go duration from 1s through 60s.",
+          "type": "string",
+          "minLength": 1,
+          "default": "10s"
+        },
+        "retries": {
+          "description": "Retries after the first attempt.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "default": 1
+        },
+        "retry_backoff": {
+          "description": "Initial Go duration for exponential retry backoff, from 100ms through 30s.",
+          "type": "string",
+          "minLength": 1,
+          "default": "2s"
+        },
+        "concurrency": {
+          "description": "Maximum concurrently checked projects.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16,
+          "default": 4
+        },
+        "output": {
+          "description": "Default CLI output format.",
+          "type": "string",
+          "enum": [
+            "text",
+            "json"
+          ],
+          "default": "text"
+        }
+      }
+    },
+    "scheduler": {
+      "description": "Scheduler generation settings.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cron": {
+          "description": "Five-field POSIX cron expression.",
+          "type": "string",
+          "minLength": 1,
+          "default": "37 3,11,19 * * *"
+        }
+      }
+    },
+    "projects": {
+      "description": "One or more Supabase projects to check. Names and environment bindings must be unique after normalization.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "description": "Stable local project label.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "url": {
+            "description": "Environment binding for the hosted Supabase project URL. Omit it to derive a name from the project label.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "env": {
+                "description": "Environment variable containing the project URL.",
+                "type": "string",
+                "pattern": "^[A-Z_][A-Z0-9_]{0,126}$"
+              }
+            }
+          },
+          "api_key": {
+            "description": "Environment binding for a publishable or legacy anon key. Omit it to derive a name from the project label.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "env": {
+                "description": "Environment variable containing the low-privilege API key.",
+                "type": "string",
+                "pattern": "^[A-Z_][A-Z0-9_]{0,126}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,9 @@
 package config_test
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +108,119 @@ func TestNewProjectsAppliesImplicitBindingsToEveryProject(t *testing.T) {
 	if len(cfg.Projects) != 2 || cfg.Projects[1].APIKey.Env != "SB_HEARTBEAT_SECOND_PROJECT_API_KEY" {
 		t.Fatalf("projects = %+v", cfg.Projects)
 	}
+}
+
+func TestMarshalIncludesPublishedSchemaDirective(t *testing.T) {
+	cfg, err := config.New(config.Project{Name: "demo"}, "")
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	encoded, err := config.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	directive := "# yaml-language-server: $schema=" + config.SchemaURL + "\n"
+	if !strings.HasPrefix(string(encoded), directive) {
+		t.Fatalf("Marshal() prefix = %q, want %q", strings.SplitN(string(encoded), "\n", 2)[0], strings.TrimSpace(directive))
+	}
+	if _, err := config.Load(strings.NewReader(string(encoded))); err != nil {
+		t.Fatalf("Load(Marshal()) error = %v", err)
+	}
+}
+
+func TestPublishedSchemaCoversStrictConfigurationContract(t *testing.T) {
+	path := filepath.Join("..", "..", "schema", "sb-heartbeat.schema.json")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(contents, &schema); err != nil {
+		t.Fatalf("schema JSON error = %v", err)
+	}
+	if schema["$schema"] != "https://json-schema.org/draft/2020-12/schema" {
+		t.Fatalf("$schema = %v", schema["$schema"])
+	}
+	if schema["$id"] != config.SchemaURL {
+		t.Fatalf("$id = %v, want %s", schema["$id"], config.SchemaURL)
+	}
+	if schema["additionalProperties"] != false {
+		t.Fatalf("root additionalProperties = %v", schema["additionalProperties"])
+	}
+	if got := schema["required"]; !schemaArrayEquals(got, "version", "projects") {
+		t.Fatalf("root required = %v", got)
+	}
+	properties := schemaObject(t, schema, "properties")
+	version := schemaObject(t, properties, "version")
+	if version["const"] != float64(1) {
+		t.Fatalf("version const = %v", version["const"])
+	}
+	defaults := schemaObject(t, properties, "defaults")
+	if defaults["additionalProperties"] != false {
+		t.Fatalf("defaults additionalProperties = %v", defaults["additionalProperties"])
+	}
+	defaultProperties := schemaObject(t, defaults, "properties")
+	assertSchemaNumber(t, schemaObject(t, defaultProperties, "retries"), 0, 3)
+	assertSchemaNumber(t, schemaObject(t, defaultProperties, "concurrency"), 1, 16)
+	output := schemaObject(t, defaultProperties, "output")
+	if got := output["enum"]; !schemaArrayEquals(got, "text", "json") {
+		t.Fatalf("output enum = %v", got)
+	}
+	projects := schemaObject(t, properties, "projects")
+	if projects["minItems"] != float64(1) {
+		t.Fatalf("projects minItems = %v", projects["minItems"])
+	}
+	project := schemaObject(t, projects, "items")
+	if project["additionalProperties"] != false {
+		t.Fatalf("project additionalProperties = %v", project["additionalProperties"])
+	}
+	if got := project["required"]; !schemaArrayEquals(got, "name") {
+		t.Fatalf("project required = %v", got)
+	}
+	projectProperties := schemaObject(t, project, "properties")
+	if schemaObject(t, projectProperties, "name")["pattern"] != "^[a-z][a-z0-9_-]{0,62}$" {
+		t.Fatalf("project name pattern = %v", schemaObject(t, projectProperties, "name")["pattern"])
+	}
+	for _, binding := range []string{"url", "api_key"} {
+		ref := schemaObject(t, projectProperties, binding)
+		if ref["additionalProperties"] != false {
+			t.Fatalf("%s additionalProperties = %v", binding, ref["additionalProperties"])
+		}
+		env := schemaObject(t, schemaObject(t, ref, "properties"), "env")
+		if env["pattern"] != "^[A-Z_][A-Z0-9_]{0,126}$" {
+			t.Fatalf("%s env pattern = %v", binding, env["pattern"])
+		}
+	}
+}
+
+func schemaObject(t *testing.T, parent map[string]any, key string) map[string]any {
+	t.Helper()
+	value, ok := parent[key].(map[string]any)
+	if !ok {
+		t.Fatalf("%s = %#v, want object", key, parent[key])
+	}
+	return value
+}
+
+func assertSchemaNumber(t *testing.T, schema map[string]any, minimum, maximum float64) {
+	t.Helper()
+	if schema["minimum"] != minimum || schema["maximum"] != maximum {
+		t.Fatalf("number bounds = [%v,%v], want [%v,%v]", schema["minimum"], schema["maximum"], minimum, maximum)
+	}
+}
+
+func schemaArrayEquals(value any, want ...string) bool {
+	items, ok := value.([]any)
+	if !ok || len(items) != len(want) {
+		return false
+	}
+	for i := range items {
+		if items[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestLoadRejectsCollidingImplicitEnvironmentBindings(t *testing.T) {

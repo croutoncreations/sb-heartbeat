@@ -18,6 +18,7 @@ const (
 	DefaultOutput      = "text"
 	DefaultRetries     = 1
 	DefaultConcurrency = 4
+	SchemaURL          = "https://raw.githubusercontent.com/croutoncreations/sb-heartbeat/main/schema/sb-heartbeat.schema.json"
 )
 
 var (
@@ -149,6 +150,7 @@ func Marshal(cfg Config) ([]byte, error) {
 		wire.Projects = append(wire.Projects, wireProject(project))
 	}
 	var buffer bytes.Buffer
+	fmt.Fprintf(&buffer, "# yaml-language-server: $schema=%s\n", SchemaURL)
 	encoder := yaml.NewEncoder(&buffer)
 	encoder.SetIndent(2)
 	if err := encoder.Encode(wire); err != nil {
