@@ -367,14 +367,16 @@ func TestHostedIntegrationRequiresReleaseFixtureBeforeCleanupAndRestoresHeartbea
 		t.Fatalf("hosted integration cleanup must not leave the fixture without a heartbeat table\n%s", cleanup)
 	}
 	finalRestore := strings.LastIndex(text, `"${binary}" migration install`)
-	postRestoreHeartbeat := strings.LastIndex(text, "wait_for_restored_heartbeat")
+	postRestoreHeartbeat := strings.LastIndex(text, `wait_for_heartbeat "${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" "restored heartbeat table"`)
 	if finalRestore < cleanupTrap || postRestoreHeartbeat < finalRestore {
 		t.Fatalf("hosted integration must prove the restored heartbeat table is healthy\n%s", text)
 	}
 	for _, fragment := range []string{
 		"for attempt in 1 2 3 4 5 6",
-		"waiting for the restored heartbeat table",
-		"restored heartbeat table did not become healthy",
+		`wait_for_heartbeat "${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" "publishable key heartbeat"`,
+		`wait_for_heartbeat "${SB_HEARTBEAT_HOSTED_ANON_KEY}" "anon key heartbeat"`,
+		`waiting for the ${description}`,
+		`${description} did not become healthy`,
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("hosted integration restoration retry missing %q\n%s", fragment, text)

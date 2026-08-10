@@ -71,22 +71,31 @@ cleanup() {
 }
 trap cleanup EXIT
 
-wait_for_restored_heartbeat() {
+wait_for_heartbeat() {
+  local api_key="$1"
+  local description="$2"
   local attempt
   local last_output=""
+  local status
   for attempt in 1 2 3 4 5 6; do
     if last_output="$(
-      SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" \
+      SB_HEARTBEAT_HOSTED_KEY="${api_key}" \
         "${binary}" --config "${config_path}" run --output text 2>&1
     )"; then
       return 0
+    else
+      status=$?
+    fi
+    if [[ "${status}" -ne 1 ]]; then
+      printf '%s\n' "${last_output}" >&2
+      return "${status}"
     fi
     if [[ "${attempt}" != "6" ]]; then
-      echo "Hosted integration: waiting for the restored heartbeat table (${attempt}/6)" >&2
+      echo "Hosted integration: waiting for the ${description} (${attempt}/6)" >&2
       sleep 2
     fi
   done
-  echo "Hosted integration: restored heartbeat table did not become healthy" >&2
+  echo "Hosted integration: ${description} did not become healthy" >&2
   printf '%s\n' "${last_output}" >&2
   return 1
 }
@@ -107,14 +116,12 @@ mutation_check="$("${psql_command[@]}" --tuples-only --no-align --command "selec
 [[ "${grant_check}" == "t|f|f|f" ]]
 [[ "${mutation_check}" == "f|f|f|f|f|f|f|f|f|f|f|f|f|f|f" ]]
 
-SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" \
-  "${binary}" --config "${config_path}" run --output json >/dev/null
-SB_HEARTBEAT_HOSTED_KEY="${SB_HEARTBEAT_HOSTED_ANON_KEY}" \
-  "${binary}" --config "${config_path}" run --output json >/dev/null
+wait_for_heartbeat "${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" "publishable key heartbeat"
+wait_for_heartbeat "${SB_HEARTBEAT_HOSTED_ANON_KEY}" "anon key heartbeat"
 
 "${binary}" migration uninstall | "${psql_command[@]}"
 [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select to_regclass('public.sb_heartbeat') is null;")" == "t" ]]
 "${binary}" migration install | "${psql_command[@]}"
-wait_for_restored_heartbeat
+wait_for_heartbeat "${SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY}" "restored heartbeat table"
 
 echo "Hosted Supabase integration: PASS"

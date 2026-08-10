@@ -75,10 +75,7 @@ for argument in "$@"; do
     fi
     run_count=$((run_count + 1))
     printf '%s\n' "${run_count}" >"${SB_HEARTBEAT_TEST_RUN_COUNT_FILE}"
-    if [[ "${run_count}" -le 4 ]]; then
-      if [[ "${run_count}" -le 2 ]]; then
-        exit 0
-      fi
+    if [[ "${run_count}" -le 2 || ( "${run_count}" -ge 5 && "${run_count}" -le 6 ) ]]; then
       exit 1
     fi
     exit 0
@@ -158,8 +155,9 @@ hosted_retry_output="$(
     "${script_directory}/integration-hosted-supabase.sh" "${failure_binary}" 2>&1
 )"
 [[ "${hosted_retry_output}" == *"waiting for the restored heartbeat table"* ]]
+[[ "${hosted_retry_output}" == *"waiting for the publishable key heartbeat"* ]]
 [[ "${hosted_retry_output}" == *"Hosted Supabase integration: PASS"* ]]
-[[ "$(<"${run_count_file}")" -eq 5 ]]
+[[ "$(<"${run_count_file}")" -eq 7 ]]
 [[ "$("${psql_command[@]}" --tuples-only --no-align --command "select obj_description('public.sb_heartbeat'::regclass, 'pg_class');")" == "sb-heartbeat:managed:v1" ]]
 
 "${psql_command[@]}" --command "drop schema sb_heartbeat_release cascade; create schema sb_heartbeat_release; create table sb_heartbeat_release.fixture(note text); insert into sb_heartbeat_release.fixture values ('preserve-me');" >/dev/null
