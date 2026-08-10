@@ -6,7 +6,7 @@ and can be enabled independently:
 
 ```bash
 sb-heartbeat install github \
-  --sb-heartbeat-version v0.1.1 \
+  --sb-heartbeat-version v0.2.0 \
   --github-annotations \
   --github-artifact-retention-days 7
 ```

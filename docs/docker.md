@@ -66,7 +66,7 @@ Release tags publish the same shell-free image to GitHub Container Registry for
 succeed. Pull an exact release tag; no mutable `latest` tag is published:
 
 ```bash
-docker pull ghcr.io/croutoncreations/sb-heartbeat:v0.1.2
+docker pull ghcr.io/croutoncreations/sb-heartbeat:v0.2.0
 ```
 
 For deployment, resolve that tag and pin the resulting digest, for example
@@ -76,7 +76,7 @@ to the pushed manifest digest. After authenticating Docker to GHCR, verify it
 against this repository:
 
 ```bash
-gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.1.2 -R croutoncreations/sb-heartbeat
+gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.2.0 -R croutoncreations/sb-heartbeat
 ```
 
 The release workflow pushes content by digest, attests that digest, and only

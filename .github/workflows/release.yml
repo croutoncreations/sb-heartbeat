@@ -57,19 +57,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Require immutable releases
+      - name: Validate release tag
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Release tag must be an exact semantic version" >&2
-            exit 1
-          fi
-          enabled="$(gh api "repos/${GITHUB_REPOSITORY}/immutable-releases" --jq '.enabled // false')"
-          if [[ "${enabled}" != true ]]; then
-            echo "GitHub immutable releases must be enabled before publishing" >&2
             exit 1
           fi
       - name: Build draft release
@@ -127,7 +120,17 @@ jobs:
             echo "Remote release tag no longer identifies the triggering commit; refusing to publish" >&2
             exit 1
           fi
+          is_draft="$(gh release view "${RELEASE_TAG}" --json isDraft --jq .isDraft)"
+          if [[ "${is_draft}" != true ]]; then
+            echo "Release became public before final publication; refusing to continue" >&2
+            exit 1
+          fi
           gh release edit "${RELEASE_TAG}" --draft=false --verify-tag
+          immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.immutable // false')"
+          if [[ "${immutable}" != true ]]; then
+            echo "Published release is not immutable" >&2
+            exit 1
+          fi
 
   publish-container:
     needs: release

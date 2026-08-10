@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -343,6 +344,12 @@ func TestCheckClassifiesHandshakeEOFAsTLSFailure(t *testing.T) {
 			connection, acceptErr := listener.Accept()
 			if acceptErr != nil {
 				return
+			}
+			_ = connection.SetReadDeadline(time.Now().Add(time.Second))
+			header := make([]byte, 5)
+			if _, readErr := io.ReadFull(connection, header); readErr == nil {
+				recordLength := int(header[3])<<8 | int(header[4])
+				_, _ = io.CopyN(io.Discard, connection, int64(recordLength))
 			}
 			connection.Close()
 		}

@@ -65,10 +65,6 @@ func TestReleaseWorkflowAttestsDraftBeforePublishingImmutableRelease(t *testing.
 			if step.With["subject-path"] != "dist/checksums.txt" {
 				t.Errorf("checksum attestation does not identify the exact manifest: %#v", step.With)
 			}
-		case "Require immutable releases":
-			if !strings.Contains(step.Run, "repos/${GITHUB_REPOSITORY}/immutable-releases") {
-				t.Fatal("immutable-release preflight is missing")
-			}
 		case "Verify draft release assets":
 			for _, required := range []string{"gh release download", "cmp", `scripts/verify-release-artifacts.sh "${remote_assets}" "${RELEASE_TAG#v}" --exact`} {
 				if !strings.Contains(step.Run, required) {
@@ -76,9 +72,15 @@ func TestReleaseWorkflowAttestsDraftBeforePublishingImmutableRelease(t *testing.
 				}
 			}
 		case "Publish attested immutable release":
-			for _, required := range []string{"git ls-remote", `"${remote_tag_sha}" != "${GITHUB_SHA}"`} {
+			for _, required := range []string{
+				"git ls-remote", `"${remote_tag_sha}" != "${GITHUB_SHA}"`,
+				`is_draft="$(gh release view "${RELEASE_TAG}" --json isDraft --jq .isDraft)"`,
+				`"${is_draft}" != true`,
+				`immutable="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.immutable // false')"`,
+				`"${immutable}" != true`,
+			} {
 				if !strings.Contains(step.Run, required) {
-					t.Errorf("tag identity check missing %q", required)
+					t.Errorf("final publication guard missing %q", required)
 				}
 			}
 			if !strings.Contains(step.Run, `gh release edit "${RELEASE_TAG}" --draft=false --verify-tag`) {
@@ -87,7 +89,7 @@ func TestReleaseWorkflowAttestsDraftBeforePublishingImmutableRelease(t *testing.
 		}
 	}
 	ordered := []string{
-		"Require immutable releases",
+		"Validate release tag",
 		"Build draft release",
 		"Verify local release artifacts",
 		"Require complete draft release",
@@ -108,6 +110,9 @@ func TestReleaseWorkflowAttestsDraftBeforePublishingImmutableRelease(t *testing.
 	}
 	if strings.Index(contents, "--draft=false") < strings.Index(contents, "actions/attest@") {
 		t.Fatal("release can be published before provenance is created")
+	}
+	if strings.Contains(contents, `repos/${GITHUB_REPOSITORY}/immutable-releases`) {
+		t.Fatal("workflow GITHUB_TOKEN cannot call the repository administration endpoint")
 	}
 	if !strings.Contains(contents, "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2") {
 		t.Fatal("attestation action lacks an exact reviewed version comment")

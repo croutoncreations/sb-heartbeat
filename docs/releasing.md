@@ -10,9 +10,19 @@ live test against a dedicated hosted Supabase project before GoReleaser runs.
 Before the next release, a repository owner must open repository **Settings**,
 find **Releases**, and select **Enable release immutability**. This protects
 future release tags and assets from replacement and lets GitHub create a signed
-release attestation when a draft is published. The release workflow checks the
-setting through the GitHub API and fails before creating a draft when it is not
-enabled. It never changes this administrative setting itself.
+release attestation when a draft is published. Immediately before pushing a
+release tag, an authenticated repository administrator must verify the setting:
+
+```bash
+gh api repos/croutoncreations/sb-heartbeat/immutable-releases \
+  --jq '.enabled == true'
+```
+
+The ephemeral workflow token cannot read this repository-administration
+endpoint, so the release workflow deliberately does not carry a long-lived
+administration credential. It rechecks draft state immediately before
+publication and then requires the published release's public `immutable` field
+to be true. It never changes the administrative setting itself.
 
 GoReleaser uploads the six platform archives and `checksums.txt` to a draft.
 The workflow verifies the exact local artifact set and checksums, confirms the
