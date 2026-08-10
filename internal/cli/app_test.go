@@ -1425,6 +1425,7 @@ func TestGeneratedCompletionScriptsParseAndRegisterWhenShellIsAvailable(t *testi
 		name       string
 		executable string
 		args       func(string) []string
+		env        func(string) []string
 	}{
 		{
 			name: "bash", executable: "bash",
@@ -1446,8 +1447,11 @@ func TestGeneratedCompletionScriptsParseAndRegisterWhenShellIsAvailable(t *testi
 		},
 		{
 			name: "powershell", executable: "pwsh",
-			args: func(path string) []string {
-				return []string{"-NoProfile", "-NonInteractive", "-Command", `$script = Get-Content -Raw -LiteralPath $args[0]; [scriptblock]::Create($script) | Out-Null; . $args[0]`, path}
+			args: func(string) []string {
+				return []string{"-NoProfile", "-NonInteractive", "-Command", `$script = Get-Content -Raw -LiteralPath $env:SB_HEARTBEAT_COMPLETION_PATH; [scriptblock]::Create($script) | Out-Null; . $env:SB_HEARTBEAT_COMPLETION_PATH`}
+			},
+			env: func(path string) []string {
+				return append(os.Environ(), "SB_HEARTBEAT_COMPLETION_PATH="+path)
 			},
 		},
 	}
@@ -1465,6 +1469,9 @@ func TestGeneratedCompletionScriptsParseAndRegisterWhenShellIsAvailable(t *testi
 				t.Fatal(err)
 			}
 			command := exec.Command(test.executable, test.args(path)...)
+			if test.env != nil {
+				command.Env = test.env(path)
+			}
 			if output, err := command.CombinedOutput(); err != nil {
 				t.Fatalf("parse/register error = %v, output = %q", err, output)
 			}
