@@ -1,8 +1,8 @@
 # SB Heartbeat — Product Specification and Implementation Plan
 
 Status: Draft for implementation  
-Specification version: 0.3  
-Last updated: 2026-08-08
+Specification version: 0.4
+Last updated: 2026-08-11
 
 ## 1. Product summary
 
@@ -21,9 +21,10 @@ The product emphasizes:
 - no hosted credential custody.
 
 SB Heartbeat is not a hosted service. Users run it through infrastructure they
-already control through GitHub Actions, a local scheduler, or the non-root
-container image. Cloudflare Workers and additional schedulers remain planned
-1.0 targets.
+already control through GitHub Actions, cron, generated macOS `launchd` and
+Linux `systemd` schedules, the non-root container image, or a generated
+Cloudflare Worker. Additional hosted execution backends remain planned 1.0
+follow-up work.
 
 Product name: **SB Heartbeat**. The repository and package name are
 `sb-heartbeat`; PostgreSQL objects use the identifier-safe `sb_heartbeat`
@@ -117,21 +118,24 @@ The MVP must:
 
 ### 5.2 1.0 goals and tracked follow-up work
 
-The following remain part of the product plan but are deferred from the MVP:
+The following remain part of the product plan after the completed 1.0 batches:
 
 - existing-table custom selects with expanded validation;
 - RPC queries with explicit warnings;
 - constrained raw PostgREST paths;
 - additional hosted execution backends beyond the generated Cloudflare Worker;
-- GHCR publication of the multi-architecture Docker image;
-- local status history and optional durable result backends;
-- failure notifications;
+- optional durable result backends such as Cloudflare KV;
 - backup checks and archive guidance;
 - paused-project inventory and optional Management API integration;
-- metrics export and additional scheduler generators;
-- `llms.txt` and, if it proves useful, generated `llms-full.txt`;
-- agent installation tests with multiple coding agents; and
-- signed artifacts and provenance where practical.
+- a separately named Homebrew tap;
+- automated calendar-delivery smoke tests for generated local schedulers; and
+- broader live Cloudflare coverage for both supported key forms and
+  multi-project configurations.
+
+Completed follow-up work—including GHCR publication, local history,
+notifications, metrics, scheduler generators, `llms.txt`, multi-agent
+installation testing, and signed release provenance—remains recorded in the
+checked roadmap items below.
 
 These items must remain visible in the roadmap and issue tracker. Deferring them
 does not remove them from the intended polished 1.0 release.
@@ -1382,6 +1386,12 @@ without weakening that path.
       multi-architecture builds.
 - [x] macOS `launchd` generator.
 - [x] `systemd` timer generator.
+- [ ] Additional hosted execution backends beyond the generated Cloudflare
+      Worker.
+- [ ] Automate release smoke tests that observe actual `launchd` and `systemd`
+      calendar delivery, not only direct service activation.
+- [ ] Expand live generated-Worker coverage to both publishable and legacy anon
+      keys and a multi-project configuration.
 
 Release tags publish the already-tested Dockerfile as the exact tag
 `ghcr.io/croutoncreations/sb-heartbeat:<release-tag>` for `linux/amd64` and
