@@ -1396,6 +1396,144 @@ func TestInstallCronResolvesDetectedExecutableToAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestInstallCronIncludesExplicitEnvironmentFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	h := &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	if code := cli.Execute(context.Background(), []string{"--config", configPath, "--env-file", envPath, "install", "cron"}, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if !strings.Contains(h.stdout.String(), "--env-file '"+envPath+"'") {
+		t.Fatalf("output = %q", h.stdout.String())
+	}
+}
+
+func TestInstallCronRejectsLogAliasOfEnvironmentFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	logAlias := filepath.Join(dir, "heartbeat.log")
+	original := []byte("FIRST_URL=private\n")
+	if err := os.WriteFile(envPath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(envPath, logAlias); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	args := []string{"--config", configPath, "--env-file", envPath, "install", "cron", "--log-path", logAlias}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	contents, err := os.ReadFile(envPath)
+	if err != nil || string(contents) != string(original) {
+		t.Fatalf("environment file changed: %q, err = %v", contents, err)
+	}
+}
+
+func TestRunLoadsExplicitPrivateEnvironmentFileWithoutMutatingProcessEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	key := "sb_publishable_" + strings.Repeat("a", 40)
+	if err := os.WriteFile(envPath, []byte("FIRST_URL=https://demo.supabase.co\nFIRST_KEY="+key+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{env: map[string]string{}}
+	code := cli.Execute(context.Background(), []string{"--config", configPath, "--env-file", envPath, "run"}, h.dependencies())
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if !h.called || len(h.seen) != 1 || h.seen[0].BaseURL.String() != "https://demo.supabase.co" || h.seen[0].APIKey != key {
+		t.Fatalf("seen = %+v", h.seen)
+	}
+	if _, exists := os.LookupEnv("FIRST_KEY"); exists {
+		t.Fatal("environment file mutated the process environment")
+	}
+}
+
+func TestRunRejectsUnsafeEnvironmentFileBeforeNetworkAccess(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	if err := os.WriteFile(envPath, []byte("FIRST_URL=https://demo.supabase.co\nFIRST_KEY=value\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{env: map[string]string{}}
+	if code := cli.Execute(context.Background(), []string{"--config", configPath, "--env-file", envPath, "run"}, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if h.called {
+		t.Fatal("unsafe environment file reached the network runner")
+	}
+	if strings.Contains(h.stderr.String(), "https://demo.supabase.co") || strings.Contains(h.stderr.String(), "FIRST_KEY=value") {
+		t.Fatalf("error leaked environment values: %q", h.stderr.String())
+	}
+}
+
+func TestEnvironmentFileSupportFailsClosedOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific private-file contract")
+	}
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	if err := os.WriteFile(envPath, []byte("FIRST_URL=value\nFIRST_KEY=value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{env: map[string]string{}}
+	if code := cli.Execute(context.Background(), []string{"--config", configPath, "--env-file", envPath, "run"}, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if h.called {
+		t.Fatal("Windows environment file reached the network runner")
+	}
+}
+
+func TestInstallLaunchdWritesReviewedPlistWithoutLoadingIt(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	outputPath := filepath.Join(dir, "io.github.croutoncreations.sb-heartbeat.plist")
+	h := &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	args := []string{"--config", configPath, "install", "launchd", "--env-file", envPath, "--output-path", outputPath}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "StartCalendarInterval") || !strings.Contains(string(data), envPath) {
+		t.Fatalf("plist = %s", data)
+	}
+	for _, forbidden := range []string{"launchctl bootstrap", "sb_publishable_", "EnvironmentVariables"} {
+		if strings.Contains(string(data), forbidden) || strings.Contains(h.stdout.String(), forbidden) {
+			t.Fatalf("launchd generation performed or embedded unsafe action %q", forbidden)
+		}
+	}
+}
+
+func TestInstallLaunchdRefusesToReplaceEnvironmentFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	original := []byte("FIRST_URL=private\n")
+	if err := os.WriteFile(envPath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	args := []string{"--config", configPath, "--env-file", envPath, "install", "launchd", "--output-path", envPath, "--force"}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	contents, err := os.ReadFile(envPath)
+	if err != nil || string(contents) != string(original) {
+		t.Fatalf("environment file changed: %q, err = %v", contents, err)
+	}
+}
+
 func TestCompletionGeneratesScriptsForSupportedShells(t *testing.T) {
 	tests := map[string]string{
 		"bash":       "bash completion V2 for sb-heartbeat",

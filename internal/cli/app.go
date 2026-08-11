@@ -17,6 +17,7 @@ import (
 
 	"github.com/croutoncreations/sb-heartbeat/internal/config"
 	"github.com/croutoncreations/sb-heartbeat/internal/credentials"
+	"github.com/croutoncreations/sb-heartbeat/internal/envfile"
 	"github.com/croutoncreations/sb-heartbeat/internal/fileutil"
 	"github.com/croutoncreations/sb-heartbeat/internal/heartbeat"
 	"github.com/croutoncreations/sb-heartbeat/internal/history"
@@ -46,6 +47,7 @@ type app struct {
 	dependencies Dependencies
 	configPath   string
 	outputMode   string
+	envFilePath  string
 	exitCode     int
 }
 
@@ -143,6 +145,7 @@ func (a *app) rootCommand() *cobra.Command {
 		SilenceUsage:  true,
 	}
 	root.PersistentFlags().StringVar(&a.configPath, "config", "sb-heartbeat.yaml", "configuration file")
+	root.PersistentFlags().StringVar(&a.envFilePath, "env-file", "", "private environment file containing literal NAME=value entries")
 	root.AddCommand(a.runCommand(false), a.runCommand(true), a.initCommand(), a.migrationCommand(), a.installCommand())
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
@@ -208,6 +211,31 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 	if closeErr != nil {
 		return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
 	}
+	lookupEnv := a.dependencies.LookupEnv
+	envIdentity := ""
+	if a.envFilePath != "" {
+		resolvedEnvPath, resolveErr := filepath.Abs(a.envFilePath)
+		if resolveErr != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve environment file path: " + resolveErr.Error()}
+		}
+		envIdentity, resolveErr = targetIdentity(resolvedEnvPath)
+		if resolveErr != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "resolve environment file identity: " + resolveErr.Error()}
+		}
+		if targetIdentitiesCollide(envIdentity, configIdentity) {
+			return &commandError{stableCode: "invalid_invocation", message: "environment file must differ from the configuration file"}
+		}
+		values, loadEnvErr := envfile.Load(resolvedEnvPath)
+		if loadEnvErr != nil {
+			return &commandError{stableCode: "invalid_invocation", message: "load environment file: " + loadEnvErr.Error()}
+		}
+		lookupEnv = func(name string) (string, bool) {
+			if value, exists := values[name]; exists {
+				return value, true
+			}
+			return a.dependencies.LookupEnv(name)
+		}
+	}
 	mode := a.outputMode
 	if mode == "" {
 		mode = cfg.Defaults.Output
@@ -237,8 +265,8 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		if err != nil {
 			return &commandError{stableCode: "invalid_invocation", message: "resolve history identity: " + err.Error()}
 		}
-		if historyIdentity == configIdentity {
-			return &commandError{stableCode: "invalid_invocation", message: "history path must not replace the configuration file"}
+		if targetIdentitiesCollide(historyIdentity, configIdentity) || (envIdentity != "" && targetIdentitiesCollide(historyIdentity, envIdentity)) {
+			return &commandError{stableCode: "invalid_invocation", message: "history path must not replace the configuration or environment file"}
 		}
 	}
 	resolvedMetricsPath := ""
@@ -255,8 +283,8 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		if err != nil {
 			return &commandError{stableCode: "invalid_invocation", message: "resolve metrics identity: " + err.Error()}
 		}
-		if targetIdentitiesCollide(metricsIdentity, configIdentity) || (historyIdentity != "" && targetIdentitiesCollide(metricsIdentity, historyIdentity)) {
-			return &commandError{stableCode: "invalid_invocation", message: "metrics path must not replace the configuration or history file"}
+		if targetIdentitiesCollide(metricsIdentity, configIdentity) || (envIdentity != "" && targetIdentitiesCollide(metricsIdentity, envIdentity)) || (historyIdentity != "" && targetIdentitiesCollide(metricsIdentity, historyIdentity)) {
+			return &commandError{stableCode: "invalid_invocation", message: "metrics path must not replace the configuration, environment, or history file"}
 		}
 	}
 	configuredNotifications := notify.statePath != "" || notify.webhookEnv != "" || notify.thresholdChanged
@@ -284,12 +312,12 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		if identityErr != nil {
 			return &commandError{stableCode: "invalid_invocation", message: "resolve notification state identity: " + identityErr.Error()}
 		}
-		if targetIdentitiesCollide(notificationIdentity, configIdentity) || (historyIdentity != "" && targetIdentitiesCollide(notificationIdentity, historyIdentity)) ||
+		if targetIdentitiesCollide(notificationIdentity, configIdentity) || (envIdentity != "" && targetIdentitiesCollide(notificationIdentity, envIdentity)) || (historyIdentity != "" && targetIdentitiesCollide(notificationIdentity, historyIdentity)) ||
 			(metricsIdentity != "" && targetIdentitiesCollide(notificationIdentity, metricsIdentity)) {
 			return &commandError{stableCode: "invalid_invocation", message: "notification state path must not replace the configuration, history, or metrics file"}
 		}
 		var exists bool
-		webhookURL, exists = a.dependencies.LookupEnv(notify.webhookEnv)
+		webhookURL, exists = lookupEnv(notify.webhookEnv)
 		if !exists || webhookURL == "" {
 			return &commandError{stableCode: "missing_input", message: "notification webhook environment variable is missing"}
 		}
@@ -312,7 +340,7 @@ func (a *app) executeChecks(ctx context.Context, selectedProject string, doctor 
 		}
 	}
 
-	projects, problems := a.resolveProjects(configured)
+	projects, problems := a.resolveProjects(configured, lookupEnv)
 	if len(problems) > 0 {
 		messages := make([]string, 0, len(problems))
 		stableCode := "missing_input"
@@ -388,15 +416,15 @@ func doctorGuidance(status heartbeat.Status) string {
 	}
 }
 
-func (a *app) resolveProjects(configured []config.Project) ([]heartbeat.Project, []preflightProblem) {
+func (a *app) resolveProjects(configured []config.Project, lookupEnv func(string) (string, bool)) ([]heartbeat.Project, []preflightProblem) {
 	projects := make([]heartbeat.Project, 0, len(configured))
 	var problems []preflightProblem
 	for _, project := range configured {
-		rawURL, ok := a.dependencies.LookupEnv(project.URL.Env)
+		rawURL, ok := lookupEnv(project.URL.Env)
 		if !ok || rawURL == "" {
 			problems = append(problems, preflightProblem{code: "missing_input", message: project.Name + ": missing environment variable " + project.URL.Env})
 		}
-		key, keyOK := a.dependencies.LookupEnv(project.APIKey.Env)
+		key, keyOK := lookupEnv(project.APIKey.Env)
 		if !keyOK || key == "" {
 			problems = append(problems, preflightProblem{code: "missing_input", message: project.Name + ": missing environment variable " + project.APIKey.Env})
 		}
@@ -805,7 +833,38 @@ func (a *app) installCommand() *cobra.Command {
 					return &commandError{stableCode: "internal_error", message: "resolve absolute executable path: " + err.Error()}
 				}
 			}
-			entry, err := scheduler.LocalCron(cfg, binaryPath, resolvedConfigPath, cronLogPath)
+			resolvedEnvPath := ""
+			if a.envFilePath != "" {
+				resolvedEnvPath, err = filepath.Abs(a.envFilePath)
+				if err != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve environment file path: " + err.Error()}
+				}
+			}
+			if cronLogPath != "" {
+				resolvedLogPath, resolveErr := filepath.Abs(cronLogPath)
+				if resolveErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve cron log path: " + resolveErr.Error()}
+				}
+				logIdentity, resolveErr := targetIdentity(resolvedLogPath)
+				if resolveErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve cron log identity: " + resolveErr.Error()}
+				}
+				for label, protectedPath := range map[string]string{
+					"binary": binaryPath, "configuration": resolvedConfigPath, "environment file": resolvedEnvPath,
+				} {
+					if protectedPath == "" {
+						continue
+					}
+					protectedIdentity, identityErr := targetIdentity(protectedPath)
+					if identityErr != nil {
+						return &commandError{stableCode: "invalid_invocation", message: "resolve " + label + " identity: " + identityErr.Error()}
+					}
+					if targetIdentitiesCollide(logIdentity, protectedIdentity) {
+						return &commandError{stableCode: "invalid_invocation", message: "cron log path must differ from the " + label + " path"}
+					}
+				}
+			}
+			entry, err := scheduler.LocalCronWithEnvFile(cfg, binaryPath, resolvedConfigPath, resolvedEnvPath, cronLogPath)
 			if err != nil {
 				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
 			}
@@ -817,7 +876,97 @@ func (a *app) installCommand() *cobra.Command {
 	}
 	cron.Flags().StringVar(&cronBinaryPath, "binary-path", "", "absolute path to the sb-heartbeat binary")
 	cron.Flags().StringVar(&cronLogPath, "log-path", "", "optional absolute path for appended stdout and stderr")
-	parent.AddCommand(github, cron)
+
+	var launchdOutputPath, launchdBinaryPath, launchdLabel, launchdStdoutPath, launchdStderrPath string
+	var launchdForce bool
+	launchd := &cobra.Command{
+		Use:   "launchd",
+		Short: "Generate a macOS user LaunchAgent without loading it",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			resolvedConfigPath, err := filepath.Abs(a.configPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
+			}
+			file, err := os.Open(resolvedConfigPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "open configuration " + resolvedConfigPath + ": " + err.Error()}
+			}
+			cfg, loadErr := config.Load(file)
+			closeErr := file.Close()
+			if loadErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "load configuration " + resolvedConfigPath + ": " + loadErr.Error()}
+			}
+			if closeErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
+			}
+			if a.envFilePath == "" {
+				return &commandError{stableCode: "invalid_invocation", message: "install launchd requires --env-file"}
+			}
+			resolvedEnvPath, err := filepath.Abs(a.envFilePath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve environment file path: " + err.Error()}
+			}
+			binaryPath := launchdBinaryPath
+			if binaryPath == "" {
+				binaryPath, err = a.dependencies.Executable()
+				if err != nil {
+					return &commandError{stableCode: "internal_error", message: "resolve executable path: " + err.Error()}
+				}
+			}
+			binaryPath, err = filepath.Abs(binaryPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve binary path: " + err.Error()}
+			}
+			outputAbsolute, err := filepath.Abs(launchdOutputPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve LaunchAgent output path: " + err.Error()}
+			}
+			outputIdentity, err := targetIdentity(outputAbsolute)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve LaunchAgent output identity: " + err.Error()}
+			}
+			for label, protectedPath := range map[string]string{
+				"binary": binaryPath, "configuration": resolvedConfigPath, "environment file": resolvedEnvPath,
+				"standard output log": launchdStdoutPath, "standard error log": launchdStderrPath,
+			} {
+				if protectedPath == "" {
+					continue
+				}
+				protectedAbsolute, resolveErr := filepath.Abs(protectedPath)
+				if resolveErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve " + label + " path: " + resolveErr.Error()}
+				}
+				protectedIdentity, resolveErr := targetIdentity(protectedAbsolute)
+				if resolveErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve " + label + " identity: " + resolveErr.Error()}
+				}
+				if targetIdentitiesCollide(outputIdentity, protectedIdentity) {
+					return &commandError{stableCode: "invalid_invocation", message: "LaunchAgent output path must differ from the " + label + " path"}
+				}
+			}
+			plist, err := scheduler.Launchd(cfg, scheduler.LaunchdOptions{
+				Label: launchdLabel, BinaryPath: binaryPath, ConfigPath: resolvedConfigPath, EnvFilePath: resolvedEnvPath,
+				StdoutPath: launchdStdoutPath, StderrPath: launchdStderrPath,
+			})
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			if err := fileutil.WriteAtomic(launchdOutputPath, plist, 0o644, launchdForce); err != nil {
+				return generatedFileCommandError(err, "")
+			}
+			fmt.Fprintln(a.dependencies.Stdout, "Created", launchdOutputPath)
+			fmt.Fprintln(a.dependencies.Stdout, "Review the LaunchAgent and private environment file before loading it; SB Heartbeat never runs launchctl.")
+			return nil
+		},
+	}
+	launchd.Flags().StringVar(&launchdOutputPath, "output-path", "sb-heartbeat.launchd.plist", "LaunchAgent plist output path")
+	launchd.Flags().StringVar(&launchdBinaryPath, "binary-path", "", "absolute path to the sb-heartbeat binary")
+	launchd.Flags().StringVar(&launchdLabel, "label", "io.github.croutoncreations.sb-heartbeat", "reverse-DNS LaunchAgent label")
+	launchd.Flags().StringVar(&launchdStdoutPath, "stdout-path", "", "optional absolute standard-output log path")
+	launchd.Flags().StringVar(&launchdStderrPath, "stderr-path", "", "optional absolute standard-error log path")
+	launchd.Flags().BoolVar(&launchdForce, "force", false, "replace the exact output file")
+	parent.AddCommand(github, cron, launchd)
 	return parent
 }
 

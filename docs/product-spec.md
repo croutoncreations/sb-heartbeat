@@ -590,6 +590,25 @@ Local cron installation prints a suggested entry and never edits the user's
 crontab. Documentation covers absolute paths, environment availability, file
 permissions, logs, and exit-code monitoring.
 
+Strict local environment files are an explicit opt-in for noninteractive
+schedulers. `--env-file PATH` reads a dedicated, private, non-symlinked regular
+file capped at 64 KiB. Its grammar is literal `NAME=value` with blank lines and
+whole-line comments; it never evaluates shell syntax, expands values, or
+mutates the process environment. Names follow the configuration environment
+name contract, duplicates and malformed lines fail closed, and file values
+take precedence over inherited values with the same name. The file must not
+alias configuration or any generated state/result path.
+Strict environment-file loading is limited to macOS and Linux; other platforms
+fail closed until equivalent private-file and no-follow guarantees are
+implemented.
+
+The macOS `launchd` generator writes a per-user LaunchAgent plist and never
+loads or enables it. It invokes the binary directly without a shell, embeds no
+binding values, references an explicit environment file, and maps representable
+POSIX cron schedules to `StartCalendarInterval` dictionaries in local time.
+Schedules that restrict both day-of-month and weekday, or expand beyond a
+bounded number of dictionaries, fail closed rather than changing semantics.
+
 ## 12. CLI design
 
 ### 12.1 MVP commands
@@ -602,6 +621,7 @@ sb-heartbeat migration install
 sb-heartbeat migration uninstall
 sb-heartbeat install github
 sb-heartbeat install cron
+sb-heartbeat install launchd
 sb-heartbeat version
 ```
 
@@ -1329,7 +1349,8 @@ without weakening that path.
 - [ ] Decide how to prevent drift between Go and generated Worker validation.
 - [x] Docker image, non-root execution, read-only filesystem support, and
       multi-architecture builds.
-- [ ] `systemd` timer and macOS `launchd` generators.
+- [x] macOS `launchd` generator.
+- [ ] `systemd` timer generator.
 
 Release tags publish the already-tested Dockerfile as the exact tag
 `ghcr.io/croutoncreations/sb-heartbeat:<release-tag>` for `linux/amd64` and

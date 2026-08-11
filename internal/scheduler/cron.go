@@ -9,6 +9,10 @@ import (
 )
 
 func LocalCron(cfg config.Config, binaryPath, configPath, logPath string) (string, error) {
+	return LocalCronWithEnvFile(cfg, binaryPath, configPath, "", logPath)
+}
+
+func LocalCronWithEnvFile(cfg config.Config, binaryPath, configPath, envFilePath, logPath string) (string, error) {
 	if err := cfg.Validate(); err != nil {
 		return "", err
 	}
@@ -21,12 +25,25 @@ func LocalCron(cfg config.Config, binaryPath, configPath, logPath string) (strin
 	if logPath != "" && !validCronPath(logPath) {
 		return "", errors.New("cron log path must be a safe absolute path without line breaks or percent signs")
 	}
+	if envFilePath != "" && !validCronPath(envFilePath) {
+		return "", errors.New("cron environment file path must be a safe absolute path without line breaks or percent signs")
+	}
+	if logPath != "" {
+		for _, protected := range []string{binaryPath, configPath, envFilePath} {
+			if protected != "" && filepath.Clean(logPath) == filepath.Clean(protected) {
+				return "", errors.New("cron log path must not replace the binary, configuration, or environment file")
+			}
+		}
+	}
 
 	environmentNames := make([]string, 0, len(cfg.Projects)*2)
 	for _, project := range cfg.Projects {
 		environmentNames = append(environmentNames, project.URL.Env, project.APIKey.Env)
 	}
 	entry := cfg.Scheduler.Cron + " " + shellQuote(binaryPath) + " --config " + shellQuote(configPath) + " run --output json"
+	if envFilePath != "" {
+		entry = cfg.Scheduler.Cron + " " + shellQuote(binaryPath) + " --config " + shellQuote(configPath) + " --env-file " + shellQuote(envFilePath) + " run --output json"
+	}
 	if logPath != "" {
 		entry += " >> " + shellQuote(logPath) + " 2>&1"
 	}

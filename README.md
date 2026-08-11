@@ -60,6 +60,9 @@ GitHub binding names can be entered instead of the derived defaults.
 
 For a local scheduler, `sb-heartbeat install cron` prints a shell-safe suggested
 entry and the required environment-variable names. It never edits your crontab.
+`sb-heartbeat install launchd` generates a reviewable macOS user LaunchAgent
+without loading it. Both scheduled and manual runs can use a strict private
+`--env-file` without evaluating shell syntax.
 
 ## Security model
 
@@ -80,11 +83,12 @@ See [Security](docs/security.md), [Configuration](docs/configuration.md), and
 
 ```text
 sb-heartbeat init
-sb-heartbeat run [--project NAME] [--output text|json] [--history PATH] [--metrics PATH] [--notification-state PATH --notification-webhook-env ENV --notify-after N]
-sb-heartbeat doctor [--project NAME] [--output text|json] [--history PATH] [--metrics PATH] [--notification-state PATH --notification-webhook-env ENV --notify-after N]
+sb-heartbeat [--env-file PATH] run [--project NAME] [--output text|json] [--history PATH] [--metrics PATH] [--notification-state PATH --notification-webhook-env ENV --notify-after N]
+sb-heartbeat [--env-file PATH] doctor [--project NAME] [--output text|json] [--history PATH] [--metrics PATH] [--notification-state PATH --notification-webhook-env ENV --notify-after N]
 sb-heartbeat migration install|uninstall [--output PATH]
 sb-heartbeat install github --sb-heartbeat-version VERSION
 sb-heartbeat install cron [--binary-path PATH] [--log-path PATH]
+sb-heartbeat --env-file PATH install launchd [--binary-path PATH] [--output-path PATH]
 sb-heartbeat version
 ```
 
@@ -101,6 +105,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [GitHub Actions](docs/github-actions.md)
 - [GitHub observability](docs/github-observability.md)
 - [Local cron](docs/local-cron.md)
+- [Local scheduler generators](docs/local-schedulers.md)
 - [Local status history](docs/status-history.md)
 - [Repeated-failure notifications](docs/notifications.md)
 - [Prometheus metrics](docs/metrics.md)

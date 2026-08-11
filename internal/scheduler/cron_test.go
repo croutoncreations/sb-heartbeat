@@ -55,3 +55,28 @@ func TestLocalCronRequiresAbsolutePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalCronWithEnvironmentFileReferencesItWithoutReadingValues(t *testing.T) {
+	entry, err := scheduler.LocalCronWithEnvFile(
+		workflowConfig(t),
+		"/usr/local/bin/sb-heartbeat",
+		"/Users/example/project/sb-heartbeat.yaml",
+		"/Users/example/.config/sb-heartbeat/heartbeat.env",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(entry, "--env-file '/Users/example/.config/sb-heartbeat/heartbeat.env'") {
+		t.Fatalf("entry does not reference environment file:\n%s", entry)
+	}
+	if strings.Contains(entry, "PROJECT_URL=") || strings.Contains(entry, "PROJECT_KEY=") {
+		t.Fatalf("entry embeds a value:\n%s", entry)
+	}
+	if _, err := scheduler.LocalCronWithEnvFile(workflowConfig(t), "/usr/local/bin/sb-heartbeat", "/tmp/config", "relative.env", ""); err == nil {
+		t.Fatal("LocalCronWithEnvFile() accepted a relative environment file")
+	}
+	if _, err := scheduler.LocalCronWithEnvFile(workflowConfig(t), "/usr/local/bin/sb-heartbeat", "/tmp/config", "/tmp/heartbeat.env", "/tmp/heartbeat.env"); err == nil {
+		t.Fatal("LocalCronWithEnvFile() accepted an environment/log path collision")
+	}
+}

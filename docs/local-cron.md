@@ -4,7 +4,8 @@ SB Heartbeat prints a suggested crontab entry but never installs or edits a
 crontab:
 
 ```bash
-sb-heartbeat --config /absolute/path/sb-heartbeat.yaml install cron \
+sb-heartbeat --config /absolute/path/sb-heartbeat.yaml \
+  --env-file /absolute/private/path/heartbeat.env install cron \
   --binary-path /absolute/path/sb-heartbeat \
   --log-path /absolute/path/sb-heartbeat.log
 ```
@@ -17,11 +18,10 @@ Paths containing line breaks or `%` are rejected because crontab parses those
 characters before invoking the shell.
 
 Review the printed line before adding it with `crontab -e`. Cron commonly has a
-smaller environment than an interactive shell, so arrange for every printed
-URL and API-key environment variable to be present without placing values in
-the crontab itself. A protected environment file loaded by a wrapper script or
-the host scheduler's secret mechanism is preferable. Restrict configuration,
-wrapper, environment, and log permissions to the account running the job.
+smaller environment than an interactive shell. A strict private environment
+file avoids placing values in the crontab itself; see
+[Local scheduler generators](local-schedulers.md). Restrict configuration,
+environment, and log permissions to the account running the job.
 
 The configured five-field expression runs in the cron host's timezone. Jobs
 can be delayed or skipped while the host is asleep or unavailable. Monitor the
