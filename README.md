@@ -63,6 +63,8 @@ entry and the required environment-variable names. It never edits your crontab.
 `sb-heartbeat install launchd` generates a reviewable macOS user LaunchAgent
 without loading it. Both scheduled and manual runs can use a strict private
 `--env-file` without evaluating shell syntax.
+`sb-heartbeat install systemd` similarly generates a hardened Linux user
+service and timer without loading or enabling either unit.
 
 ## Security model
 
@@ -89,6 +91,7 @@ sb-heartbeat migration install|uninstall [--output PATH]
 sb-heartbeat install github --sb-heartbeat-version VERSION
 sb-heartbeat install cron [--binary-path PATH] [--log-path PATH]
 sb-heartbeat --env-file PATH install launchd [--binary-path PATH] [--output-path PATH]
+sb-heartbeat --env-file PATH install systemd [--binary-path PATH] [--service-output PATH] [--timer-output PATH]
 sb-heartbeat version
 ```
 

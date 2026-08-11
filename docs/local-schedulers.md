@@ -93,3 +93,52 @@ three dictionaries.
 
 Scheduled runs can be delayed or coalesced while the Mac sleeps. Keep the logs,
 stable exit codes, and a manual `doctor` run available for diagnosis.
+
+## Linux `systemd` user timer
+
+Generate a hardened per-user oneshot service and its timer:
+
+```bash
+mkdir -p "$HOME/.config/systemd/user"
+sb-heartbeat \
+  --config /absolute/path/sb-heartbeat.yaml \
+  --env-file "$HOME/.config/sb-heartbeat/heartbeat.env" \
+  install systemd \
+  --service-output "$HOME/.config/systemd/user/sb-heartbeat.service" \
+  --timer-output "$HOME/.config/systemd/user/sb-heartbeat.timer"
+```
+
+The generated service invokes the binary directly, disables systemd
+environment-variable expansion for its arguments, and applies filesystem,
+privilege, private-user, private-device, address-family, and executable-memory
+restrictions. These per-user namespace protections require systemd 244 or newer
+and a host that permits unprivileged user namespaces; validate the generated
+service on the target host before enabling it. It reads the configuration and
+private environment file but writes no application state; stdout and stderr go
+to the user journal. The timer uses `Persistent=true`, so systemd can run one
+missed heartbeat after the user manager becomes available.
+
+SB Heartbeat preflights both output files before writing either one. It never
+loads the units and never enables the timer. Review both files and validate the
+environment first, then activate them explicitly:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now sb-heartbeat.timer
+systemctl --user start sb-heartbeat.service
+systemctl --user status sb-heartbeat.service sb-heartbeat.timer
+journalctl --user-unit sb-heartbeat.service
+```
+
+The direct service start is the manual one-off validation. To stop future runs:
+
+```bash
+systemctl --user disable --now sb-heartbeat.timer
+systemctl --user daemon-reload
+```
+
+Calendar events use the host's local timezone and the same bounded translation
+rules as the `launchd` generator. Simultaneous non-wildcard day-of-month and
+weekday restrictions are rejected instead of silently changing POSIX cron's OR
+semantics. User timers normally run only while the user manager is active; a
+Linux administrator may enable lingering when that behavior is appropriate.

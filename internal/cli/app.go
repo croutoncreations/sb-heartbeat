@@ -966,7 +966,117 @@ func (a *app) installCommand() *cobra.Command {
 	launchd.Flags().StringVar(&launchdStdoutPath, "stdout-path", "", "optional absolute standard-output log path")
 	launchd.Flags().StringVar(&launchdStderrPath, "stderr-path", "", "optional absolute standard-error log path")
 	launchd.Flags().BoolVar(&launchdForce, "force", false, "replace the exact output file")
-	parent.AddCommand(github, cron, launchd)
+
+	var systemdServiceOutput, systemdTimerOutput, systemdBinaryPath string
+	var systemdForce bool
+	systemd := &cobra.Command{
+		Use:   "systemd",
+		Short: "Generate a hardened systemd user service and timer without enabling them",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			resolvedConfigPath, err := filepath.Abs(a.configPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
+			}
+			file, err := os.Open(resolvedConfigPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "open configuration " + resolvedConfigPath + ": " + err.Error()}
+			}
+			cfg, loadErr := config.Load(file)
+			closeErr := file.Close()
+			if loadErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "load configuration " + resolvedConfigPath + ": " + loadErr.Error()}
+			}
+			if closeErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
+			}
+			if a.envFilePath == "" {
+				return &commandError{stableCode: "invalid_invocation", message: "install systemd requires --env-file"}
+			}
+			resolvedEnvPath, err := filepath.Abs(a.envFilePath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve environment file path: " + err.Error()}
+			}
+			binaryPath := systemdBinaryPath
+			if binaryPath == "" {
+				binaryPath, err = a.dependencies.Executable()
+				if err != nil {
+					return &commandError{stableCode: "internal_error", message: "resolve executable path: " + err.Error()}
+				}
+			}
+			binaryPath, err = filepath.Abs(binaryPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve binary path: " + err.Error()}
+			}
+			serviceFilename := filepath.Base(systemdServiceOutput)
+			timerFilename := filepath.Base(systemdTimerOutput)
+			if filepath.Ext(serviceFilename) != ".service" || filepath.Ext(timerFilename) != ".timer" {
+				return &commandError{stableCode: "invalid_invocation", message: "systemd outputs must end in .service and .timer"}
+			}
+			serviceUnitName := strings.TrimSuffix(serviceFilename, ".service")
+			timerUnitName := strings.TrimSuffix(timerFilename, ".timer")
+			if serviceUnitName != timerUnitName {
+				return &commandError{stableCode: "invalid_invocation", message: "systemd service and timer output filenames must use the same base name"}
+			}
+			service, timer, err := scheduler.Systemd(cfg, scheduler.SystemdOptions{
+				UnitName: serviceUnitName, BinaryPath: binaryPath, ConfigPath: resolvedConfigPath, EnvFilePath: resolvedEnvPath,
+			})
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			serviceAbsolute, err := filepath.Abs(systemdServiceOutput)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve systemd service output path: " + err.Error()}
+			}
+			timerAbsolute, err := filepath.Abs(systemdTimerOutput)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve systemd timer output path: " + err.Error()}
+			}
+			serviceIdentity, err := targetIdentity(serviceAbsolute)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve systemd service output identity: " + err.Error()}
+			}
+			timerIdentity, err := targetIdentity(timerAbsolute)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve systemd timer output identity: " + err.Error()}
+			}
+			if targetIdentitiesCollide(serviceIdentity, timerIdentity) {
+				return &commandError{stableCode: "invalid_invocation", message: "systemd service and timer output paths must differ"}
+			}
+			for label, protectedPath := range map[string]string{
+				"binary": binaryPath, "configuration": resolvedConfigPath, "environment file": resolvedEnvPath,
+			} {
+				protectedIdentity, identityErr := targetIdentity(protectedPath)
+				if identityErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve " + label + " identity: " + identityErr.Error()}
+				}
+				if targetIdentitiesCollide(serviceIdentity, protectedIdentity) || targetIdentitiesCollide(timerIdentity, protectedIdentity) {
+					return &commandError{stableCode: "invalid_invocation", message: "systemd output paths must differ from the " + label + " path"}
+				}
+			}
+			if err := fileutil.CheckTarget(systemdServiceOutput, systemdForce); err != nil {
+				return generatedFileCommandError(err, "")
+			}
+			if err := fileutil.CheckTarget(systemdTimerOutput, systemdForce); err != nil {
+				return generatedFileCommandError(err, "")
+			}
+			if err := fileutil.WriteAtomic(systemdServiceOutput, service, 0o644, systemdForce); err != nil {
+				return generatedFileCommandError(err, "")
+			}
+			fmt.Fprintln(a.dependencies.Stdout, "Created", systemdServiceOutput)
+			if err := fileutil.WriteAtomic(systemdTimerOutput, timer, 0o644, systemdForce); err != nil {
+				return generatedFileCommandError(err, "")
+			}
+			fmt.Fprintln(a.dependencies.Stdout, "Created", systemdTimerOutput)
+			fmt.Fprintln(a.dependencies.Stdout, "Review both user units and the private environment file before enabling them; SB Heartbeat never runs systemctl.")
+			return nil
+		},
+	}
+	systemd.Flags().StringVar(&systemdServiceOutput, "service-output", "sb-heartbeat.service", "systemd user service output path")
+	systemd.Flags().StringVar(&systemdTimerOutput, "timer-output", "sb-heartbeat.timer", "systemd user timer output path")
+	systemd.Flags().StringVar(&systemdBinaryPath, "binary-path", "", "absolute path to the sb-heartbeat binary")
+	systemd.Flags().BoolVar(&systemdForce, "force", false, "replace the exact output files")
+	parent.AddCommand(github, cron, launchd, systemd)
 	return parent
 }
 

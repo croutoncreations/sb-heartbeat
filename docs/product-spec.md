@@ -609,6 +609,18 @@ POSIX cron schedules to `StartCalendarInterval` dictionaries in local time.
 Schedules that restrict both day-of-month and weekday, or expand beyond a
 bounded number of dictionaries, fail closed rather than changing semantics.
 
+The Linux `systemd` generator writes a hardened per-user oneshot service and a
+timer, preflighting both outputs before writing either and never loading or
+enabling them. The service invokes the binary directly with environment
+substitution disabled, references the same strict environment-file runtime,
+and applies no-new-privileges, private user/device namespaces, read-only
+system/home, private temporary directory, address-family, capability, and
+executable-memory restrictions. Namespace hardening requires systemd 244 or
+newer and host support for unprivileged user namespaces, which operators verify
+before enabling the generated units. The timer uses local-time `OnCalendar`
+events, one-minute accuracy, and persistent catch-up. It shares the bounded
+cron-translation and day-semantics rejection contract with `launchd`.
+
 ## 12. CLI design
 
 ### 12.1 MVP commands
@@ -622,6 +634,7 @@ sb-heartbeat migration uninstall
 sb-heartbeat install github
 sb-heartbeat install cron
 sb-heartbeat install launchd
+sb-heartbeat install systemd
 sb-heartbeat version
 ```
 
@@ -1350,7 +1363,7 @@ without weakening that path.
 - [x] Docker image, non-root execution, read-only filesystem support, and
       multi-architecture builds.
 - [x] macOS `launchd` generator.
-- [ ] `systemd` timer generator.
+- [x] `systemd` timer generator.
 
 Release tags publish the already-tested Dockerfile as the exact tag
 `ghcr.io/croutoncreations/sb-heartbeat:<release-tag>` for `linux/amd64` and

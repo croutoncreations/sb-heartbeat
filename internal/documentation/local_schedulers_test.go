@@ -15,6 +15,8 @@ func TestLocalSchedulerDocumentationCoversSecureGeneratedOperation(t *testing.T)
 	for _, required := range []string{
 		"--env-file", "chmod 600", "NAME=value", "not shell syntax",
 		"install launchd", "LaunchAgents", "launchctl bootstrap", "launchctl bootout", "launchctl kickstart",
+		"install systemd", "systemd/user", "systemctl --user daemon-reload", "systemctl --user enable --now", "systemctl --user disable --now",
+		"systemd 244", "unprivileged user namespaces",
 		"never loads", "never enables", "local timezone", "day-of-month", "weekday",
 	} {
 		if !strings.Contains(text, required) {
@@ -35,7 +37,7 @@ func TestProductRoadmapTracksLaunchdAndStrictEnvironmentFiles(t *testing.T) {
 	}
 	text := string(contents)
 	for _, required := range []string{
-		"Strict local environment files", "macOS `launchd` generator", "[x] macOS `launchd` generator",
+		"Strict local environment files", "macOS `launchd` generator", "[x] macOS `launchd` generator", "[x] `systemd` timer generator",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("product specification missing %q", required)

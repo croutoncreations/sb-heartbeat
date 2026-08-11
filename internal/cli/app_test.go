@@ -1534,6 +1534,98 @@ func TestInstallLaunchdRefusesToReplaceEnvironmentFile(t *testing.T) {
 	}
 }
 
+func TestInstallSystemdWritesBothUnitsWithoutEnablingThem(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	servicePath := filepath.Join(dir, "sb-heartbeat.service")
+	timerPath := filepath.Join(dir, "sb-heartbeat.timer")
+	h := &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	args := []string{"--config", configPath, "--env-file", envPath, "install", "systemd", "--service-output", servicePath, "--timer-output", timerPath}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	service, serviceErr := os.ReadFile(servicePath)
+	timer, timerErr := os.ReadFile(timerPath)
+	if serviceErr != nil || timerErr != nil {
+		t.Fatalf("service err = %v, timer err = %v", serviceErr, timerErr)
+	}
+	if !strings.Contains(string(service), "ExecStart=:") || !strings.Contains(string(timer), "OnCalendar=") {
+		t.Fatalf("service=%s\ntimer=%s", service, timer)
+	}
+	for _, forbidden := range []string{"systemctl enable", "systemctl --user enable", "sb_publishable_"} {
+		if strings.Contains(h.stdout.String(), forbidden) || strings.Contains(string(service), forbidden) || strings.Contains(string(timer), forbidden) {
+			t.Fatalf("generation contains or performs %q", forbidden)
+		}
+	}
+}
+
+func TestInstallSystemdPreflightsBothTargetsAndProtectedPathCollisions(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	if err := os.WriteFile(envPath, []byte("PRIVATE=value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	existingTimer := filepath.Join(dir, "existing.timer")
+	if err := os.WriteFile(existingTimer, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	servicePath := filepath.Join(dir, "new.service")
+	h := &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	args := []string{"--config", configPath, "--env-file", envPath, "install", "systemd", "--service-output", servicePath, "--timer-output", existingTimer}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if _, err := os.Stat(servicePath); !os.IsNotExist(err) {
+		t.Fatalf("service written despite timer collision: %v", err)
+	}
+
+	serviceAlias := filepath.Join(dir, "private.service")
+	if err := os.Link(envPath, serviceAlias); err != nil {
+		t.Fatal(err)
+	}
+	h = &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	args = []string{"--config", configPath, "--env-file", envPath, "install", "systemd", "--service-output", serviceAlias, "--timer-output", filepath.Join(dir, "private.timer"), "--force"}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("protected collision code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if contents, err := os.ReadFile(envPath); err != nil || string(contents) != "PRIVATE=value\n" {
+		t.Fatalf("environment file changed: %q, err=%v", contents, err)
+	}
+}
+
+func TestInstallSystemdDerivesMatchingUnitNameFromOutputFiles(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	envPath := filepath.Join(dir, "heartbeat.env")
+	servicePath := filepath.Join(dir, "toneclone-heartbeat.service")
+	timerPath := filepath.Join(dir, "toneclone-heartbeat.timer")
+	h := &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	args := []string{"--config", configPath, "--env-file", envPath, "install", "systemd", "--service-output", servicePath, "--timer-output", timerPath}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	timer, err := os.ReadFile(timerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(timer), "Unit=toneclone-heartbeat.service") {
+		t.Fatalf("timer = %s", timer)
+	}
+
+	h = &harness{executable: "/usr/local/bin/sb-heartbeat"}
+	mismatchedService := filepath.Join(dir, "mismatch.service")
+	mismatchedTimer := filepath.Join(dir, "different.timer")
+	args = []string{"--config", configPath, "--env-file", envPath, "install", "systemd", "--service-output", mismatchedService, "--timer-output", mismatchedTimer}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("mismatch code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if _, err := os.Stat(mismatchedService); !os.IsNotExist(err) {
+		t.Fatalf("mismatched service was written: %v", err)
+	}
+}
+
 func TestCompletionGeneratesScriptsForSupportedShells(t *testing.T) {
 	tests := map[string]string{
 		"bash":       "bash completion V2 for sb-heartbeat",
