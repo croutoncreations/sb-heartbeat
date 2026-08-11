@@ -1626,6 +1626,94 @@ func TestInstallSystemdDerivesMatchingUnitNameFromOutputFiles(t *testing.T) {
 	}
 }
 
+func TestInstallCloudflareWritesCompleteProjectWithoutDeploying(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	outputDir := filepath.Join(dir, "worker")
+	h := &harness{}
+	args := []string{"--config", configPath, "install", "cloudflare", "--output-dir", outputDir, "--worker-name", "toneclone-heartbeat"}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	for _, relative := range []string{"package.json", "wrangler.jsonc", "src/index.ts", "test/index.spec.ts", ".gitignore"} {
+		if _, err := os.Stat(filepath.Join(outputDir, relative)); err != nil {
+			t.Errorf("generated %s: %v", relative, err)
+		}
+	}
+	for _, forbidden := range []string{"wrangler deploy\n", "sb_publishable_example"} {
+		if strings.Contains(h.stdout.String(), forbidden) {
+			t.Fatalf("generation output contains or performs %q: %s", forbidden, h.stdout.String())
+		}
+	}
+}
+
+func TestInstallCloudflarePreflightsEveryTargetAndProtectedConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	outputDir := filepath.Join(dir, "worker")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	existing := filepath.Join(outputDir, "wrangler.jsonc")
+	if err := os.WriteFile(existing, []byte("existing\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{}
+	args := []string{"--config", configPath, "install", "cloudflare", "--output-dir", outputDir}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("collision code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("package written despite later target collision: %v", err)
+	}
+	if data, err := os.ReadFile(existing); err != nil || string(data) != "existing\n" {
+		t.Fatalf("existing file changed: %q, err=%v", data, err)
+	}
+
+	protectedDir := filepath.Join(dir, "protected")
+	if err := os.MkdirAll(protectedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	protectedConfig := filepath.Join(protectedDir, "README.md")
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protectedConfig, configData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h = &harness{}
+	args = []string{"--config", protectedConfig, "install", "cloudflare", "--output-dir", protectedDir, "--force"}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("protected collision code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if after, err := os.ReadFile(protectedConfig); err != nil || string(after) != string(configData) {
+		t.Fatalf("protected configuration changed: %q, err=%v", after, err)
+	}
+}
+
+func TestInstallCloudflareRejectsSymlinkOutputDirectory(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeConfig(t, dir, strings.ReplaceAll(twoProjectConfig(), "  - name: second\n    url: {env: SECOND_URL}\n    api_key: {env: SECOND_KEY}\n", ""))
+	realDir := filepath.Join(dir, "real")
+	if err := os.Mkdir(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(dir, "worker")
+	if err := os.Symlink(realDir, alias); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{}
+	args := []string{"--config", configPath, "install", "cloudflare", "--output-dir", alias}
+	if code := cli.Execute(context.Background(), args, h.dependencies()); code != 2 {
+		t.Fatalf("code = %d, stderr = %q", code, h.stderr.String())
+	}
+	entries, err := os.ReadDir(realDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("symlink target modified: entries=%v, err=%v", entries, err)
+	}
+}
+
 func TestCompletionGeneratesScriptsForSupportedShells(t *testing.T) {
 	tests := map[string]string{
 		"bash":       "bash completion V2 for sb-heartbeat",

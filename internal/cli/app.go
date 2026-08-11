@@ -1076,8 +1076,114 @@ func (a *app) installCommand() *cobra.Command {
 	systemd.Flags().StringVar(&systemdTimerOutput, "timer-output", "sb-heartbeat.timer", "systemd user timer output path")
 	systemd.Flags().StringVar(&systemdBinaryPath, "binary-path", "", "absolute path to the sb-heartbeat binary")
 	systemd.Flags().BoolVar(&systemdForce, "force", false, "replace the exact output files")
-	parent.AddCommand(github, cron, launchd, systemd)
+
+	var cloudflareOutputDir, cloudflareWorkerName string
+	var cloudflareForce bool
+	cloudflare := &cobra.Command{
+		Use:   "cloudflare",
+		Short: "Generate a tested cron-only Cloudflare Worker project without deploying it",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			resolvedConfigPath, err := filepath.Abs(a.configPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "resolve configuration path: " + err.Error()}
+			}
+			file, err := os.Open(resolvedConfigPath)
+			if err != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "open configuration " + resolvedConfigPath + ": " + err.Error()}
+			}
+			cfg, loadErr := config.Load(file)
+			closeErr := file.Close()
+			if loadErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "load configuration " + resolvedConfigPath + ": " + loadErr.Error()}
+			}
+			if closeErr != nil {
+				return &commandError{stableCode: "invalid_configuration", message: "close configuration " + resolvedConfigPath + ": " + closeErr.Error()}
+			}
+			files, err := scheduler.Cloudflare(cfg, scheduler.CloudflareOptions{WorkerName: cloudflareWorkerName})
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+			outputAbsolute, err := filepath.Abs(cloudflareOutputDir)
+			if err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: "resolve Cloudflare output directory: " + err.Error()}
+			}
+			if filepath.Dir(outputAbsolute) == outputAbsolute {
+				return &commandError{stableCode: "invalid_invocation", message: "Cloudflare output directory must not be a filesystem root"}
+			}
+			if err := validateGeneratedDirectory(outputAbsolute); err != nil {
+				return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+			}
+
+			protected := map[string]string{"configuration": resolvedConfigPath}
+			if a.envFilePath != "" {
+				resolvedEnvPath, resolveErr := filepath.Abs(a.envFilePath)
+				if resolveErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve environment file path: " + resolveErr.Error()}
+				}
+				protected["environment file"] = resolvedEnvPath
+			}
+			protectedIdentities := make(map[string]string, len(protected))
+			for label, protectedPath := range protected {
+				identity, identityErr := targetIdentity(protectedPath)
+				if identityErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve " + label + " identity: " + identityErr.Error()}
+				}
+				protectedIdentities[label] = identity
+			}
+
+			targets := make([]string, len(files))
+			for index, generated := range files {
+				target := filepath.Join(outputAbsolute, filepath.FromSlash(generated.Path))
+				if err := validateGeneratedDirectory(filepath.Dir(target)); err != nil {
+					return &commandError{stableCode: "invalid_invocation", message: err.Error()}
+				}
+				targetIdentityPath, identityErr := targetIdentity(target)
+				if identityErr != nil {
+					return &commandError{stableCode: "invalid_invocation", message: "resolve Cloudflare output identity: " + identityErr.Error()}
+				}
+				for label, protectedIdentity := range protectedIdentities {
+					if targetIdentitiesCollide(targetIdentityPath, protectedIdentity) {
+						return &commandError{stableCode: "invalid_invocation", message: "Cloudflare output paths must differ from the " + label + " path"}
+					}
+				}
+				if err := fileutil.CheckTarget(target, cloudflareForce); err != nil {
+					return generatedFileCommandError(err, "")
+				}
+				targets[index] = target
+			}
+			for index, generated := range files {
+				if err := fileutil.WriteAtomic(targets[index], generated.Data, 0o644, cloudflareForce); err != nil {
+					return generatedFileCommandError(err, "")
+				}
+				fmt.Fprintln(a.dependencies.Stdout, "Created", targets[index])
+			}
+			fmt.Fprintln(a.dependencies.Stdout, "Review and test the generated Worker before deploying it; SB Heartbeat never runs Wrangler or stores credentials.")
+			return nil
+		},
+	}
+	cloudflare.Flags().StringVar(&cloudflareOutputDir, "output-dir", "sb-heartbeat-cloudflare", "dedicated generated Worker project directory")
+	cloudflare.Flags().StringVar(&cloudflareWorkerName, "worker-name", "sb-heartbeat", "Cloudflare Worker name")
+	cloudflare.Flags().BoolVar(&cloudflareForce, "force", false, "replace the exact generated files")
+	parent.AddCommand(github, cron, launchd, systemd, cloudflare)
 	return parent
+}
+
+func validateGeneratedDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect generated output directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing generated output directory symlink %s", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("generated output parent is not a directory: %s", path)
+	}
+	return nil
 }
 
 func prompt(reader *bufio.Reader, writer io.Writer, label, defaultValue string) (string, error) {

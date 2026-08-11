@@ -122,7 +122,7 @@ The following remain part of the product plan but are deferred from the MVP:
 - existing-table custom selects with expanded validation;
 - RPC queries with explicit warnings;
 - constrained raw PostgREST paths;
-- Cloudflare Worker and Cron Trigger generation;
+- additional hosted execution backends beyond the generated Cloudflare Worker;
 - GHCR publication of the multi-architecture Docker image;
 - local status history and optional durable result backends;
 - failure notifications;
@@ -621,6 +621,22 @@ before enabling the generated units. The timer uses local-time `OnCalendar`
 events, one-minute accuracy, and persistent catch-up. It shares the bounded
 cron-translation and day-semantics rejection contract with `launchd`.
 
+The Cloudflare generator writes a dedicated cron-only TypeScript Worker project
+and never installs dependencies, authenticates, stores credential values, or
+deploys it. Wrangler disables `workers.dev` and Preview URLs, declares each URL
+and low-privilege key binding as a required secret, and owns one UTC Cron
+Trigger. The generated runtime preserves the fixed hosted-origin, key-type,
+read-only query, redirect-rejection, 64 KiB response, exact-row, bounded retry,
+and sanitized-output contracts, including the 30-second `Retry-After` cap.
+Cloudflare platform retries are disabled so configured attempt limits remain
+authoritative. POSIX weekdays are rendered as names and ambiguous day-of-month
+plus weekday schedules fail closed. Generation targets the free-plan variable
+and worst-case subrequest limits and reserves a one-minute margin under the
+15-minute scheduled invocation wall-time limit.
+Exact direct tool versions and generated executable contract tests prevent
+validation drift; operators create and commit the transitive package lock after
+review.
+
 ## 12. CLI design
 
 ### 12.1 MVP commands
@@ -635,6 +651,7 @@ sb-heartbeat install github
 sb-heartbeat install cron
 sb-heartbeat install launchd
 sb-heartbeat install systemd
+sb-heartbeat install cloudflare
 sb-heartbeat version
 ```
 
@@ -1358,8 +1375,9 @@ without weakening that path.
 
 ### Execution backends
 
-- [ ] Cloudflare Worker generator and Cron Triggers.
-- [ ] Decide how to prevent drift between Go and generated Worker validation.
+- [x] Cloudflare Worker generator and Cron Triggers.
+- [x] Prevent validation drift with pinned generated projects and generated
+      executable contract tests.
 - [x] Docker image, non-root execution, read-only filesystem support, and
       multi-architecture builds.
 - [x] macOS `launchd` generator.

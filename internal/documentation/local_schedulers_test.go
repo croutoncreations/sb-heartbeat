@@ -38,9 +38,33 @@ func TestProductRoadmapTracksLaunchdAndStrictEnvironmentFiles(t *testing.T) {
 	text := string(contents)
 	for _, required := range []string{
 		"Strict local environment files", "macOS `launchd` generator", "[x] macOS `launchd` generator", "[x] `systemd` timer generator",
+		"[x] Cloudflare Worker generator and Cron Triggers", "generated executable contract tests",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("product specification missing %q", required)
+		}
+	}
+}
+
+func TestCloudflareDocumentationCoversSafeLocalValidationAndDeployment(t *testing.T) {
+	contents, err := os.ReadFile("../../docs/cloudflare.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(contents)
+	for _, required := range []string{
+		"install cloudflare", "UTC", "publishable", "legacy anon", "secret/service-role",
+		"workers_dev", "preview_urls", "/cdn-cgi/handler/scheduled?format=json",
+		"wrangler deploy --secrets-file", "npm test", "npm run check", "64 KiB",
+		"free plan", "25", "never deploys", "never stores credential values",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("Cloudflare documentation missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"sb_publishable_", "https://example.supabase.co"} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Cloudflare documentation contains credential-like example %q", forbidden)
 		}
 	}
 }
@@ -52,5 +76,8 @@ func TestReadmeLinksLocalSchedulerGuide(t *testing.T) {
 	}
 	if !strings.Contains(string(contents), "[Local scheduler generators](docs/local-schedulers.md)") {
 		t.Fatal("README does not link the local scheduler guide")
+	}
+	if !strings.Contains(string(contents), "[Cloudflare Worker generator](docs/cloudflare.md)") {
+		t.Fatal("README does not link the Cloudflare Worker guide")
 	}
 }

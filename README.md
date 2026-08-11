@@ -65,6 +65,8 @@ without loading it. Both scheduled and manual runs can use a strict private
 `--env-file` without evaluating shell syntax.
 `sb-heartbeat install systemd` similarly generates a hardened Linux user
 service and timer without loading or enabling either unit.
+`sb-heartbeat install cloudflare` generates a tested, cron-only TypeScript
+Worker project without deploying it or storing credential values.
 
 ## Security model
 
@@ -78,8 +80,9 @@ service and timer without loading or enabling either unit.
 - Install and uninstall SQL fail closed when the heartbeat name belongs to an
   unrecognized object.
 
-See [Security](docs/security.md), [Configuration](docs/configuration.md), and
-[GitHub Actions](docs/github-actions.md) for details.
+See [Security](docs/security.md), [Configuration](docs/configuration.md),
+[GitHub Actions](docs/github-actions.md), and the
+[Cloudflare Worker generator](docs/cloudflare.md) for details.
 
 ## Commands
 
@@ -92,6 +95,7 @@ sb-heartbeat install github --sb-heartbeat-version VERSION
 sb-heartbeat install cron [--binary-path PATH] [--log-path PATH]
 sb-heartbeat --env-file PATH install launchd [--binary-path PATH] [--output-path PATH]
 sb-heartbeat --env-file PATH install systemd [--binary-path PATH] [--service-output PATH] [--timer-output PATH]
+sb-heartbeat install cloudflare [--output-dir PATH] [--worker-name NAME]
 sb-heartbeat version
 ```
 
@@ -109,6 +113,7 @@ invalid input/configuration, and `3` for an internal CLI failure.
 - [GitHub observability](docs/github-observability.md)
 - [Local cron](docs/local-cron.md)
 - [Local scheduler generators](docs/local-schedulers.md)
+- [Cloudflare Worker generator](docs/cloudflare.md)
 - [Local status history](docs/status-history.md)
 - [Repeated-failure notifications](docs/notifications.md)
 - [Prometheus metrics](docs/metrics.md)
