@@ -74,7 +74,7 @@ func TestCloudflareGeneratesPinnedCronOnlyWorkerProject(t *testing.T) {
 	worker := string(generated["src/index.ts"])
 	for _, required := range []string{
 		`/rest/v1/sb_heartbeat?select=id&id=eq.true&limit=1`,
-		`redirect: "error"`, `const MAX_RESPONSE_BYTES = 64 * 1024`,
+		`redirect: "manual"`, `const MAX_RESPONSE_BYTES = 64 * 1024`,
 		`"apikey"`, `Authorization`, `sb_publishable_`, `role !== "anon"`,
 		`scheduled(`, `controller.noRetry()`, `retry-after`, `DEMO_URL`, `DEMO_KEY`,
 	} {

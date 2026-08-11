@@ -464,7 +464,7 @@ export async function runProject(project: Project, rawURL: string | undefined, k
       const response = await fetch(origin + HEARTBEAT_PATH, {
         method: "GET",
         headers,
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(settings.timeoutMs),
       });
 		let bodyBytes: Uint8Array;
@@ -588,7 +588,7 @@ describe("generated heartbeat contract", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(origin + "/rest/v1/sb_heartbeat?select=id&id=eq.true&limit=1");
-    expect(init).toMatchObject({ method: "GET", redirect: "error", headers: { Accept: "application/json", apikey: publishable } });
+    expect(init).toMatchObject({ method: "GET", redirect: "manual", headers: { Accept: "application/json", apikey: publishable } });
     expect(init.headers).not.toHaveProperty("Authorization");
   });
 
@@ -603,10 +603,11 @@ describe("generated heartbeat contract", () => {
   });
 
   it("rejects redirects", async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new TypeError("redirect mode is error"));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 302, headers: { location: "https://example.com" } }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(runProject(project, origin, publishable, settings)).resolves.toMatchObject({ status: "temporary_upstream_failure" });
-    expect(fetchMock.mock.calls[0][1].redirect).toBe("error");
+    await expect(runProject(project, origin, publishable, settings)).resolves.toMatchObject({ status: "unexpected_response", http_status: 302, attempts: 1 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("manual");
   });
 
   it("rejects oversized responses", async () => {
