@@ -3,7 +3,10 @@
 Tags do not publish immediately. The release workflow first calls the complete
 reusable test workflow, including normal tests, race detection, vet, full SQL
 and workflow goldens, and the disposable PostgreSQL suite. It then requires a
-live test against a dedicated hosted Supabase project before GoReleaser runs.
+live test against a dedicated hosted Supabase project and actual calendar
+delivery from disposable macOS `launchd` and Linux `systemd --user` schedules
+before GoReleaser runs. The scheduler probes make no network requests and
+receive no repository secrets.
 
 ## One-time immutable release setup
 

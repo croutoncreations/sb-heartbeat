@@ -16,6 +16,9 @@ jobs:
   verify:
     uses: ./.github/workflows/test.yml
 
+  calendar-delivery:
+    uses: ./.github/workflows/calendar-smoke.yml
+
   hosted-supabase:
     runs-on: ubuntu-latest
     environment: hosted-supabase-release
@@ -40,6 +43,7 @@ jobs:
   release:
     needs:
       - verify
+      - calendar-delivery
       - hosted-supabase
     runs-on: ubuntu-latest
     permissions:

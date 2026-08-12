@@ -18,6 +18,8 @@ func TestLocalSchedulerDocumentationCoversSecureGeneratedOperation(t *testing.T)
 		"install systemd", "systemd/user", "systemctl --user daemon-reload", "systemctl --user enable --now", "systemctl --user disable --now",
 		"systemd 244", "unprivileged user namespaces",
 		"never loads", "never enables", "local timezone", "day-of-month", "weekday",
+		"integration-launchd-calendar.sh", "integration-systemd-calendar.sh", "calendar delivery",
+		"--privileged", "host cgroup namespace", "240 through 600",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("local scheduler documentation missing %q", required)
@@ -39,6 +41,7 @@ func TestProductRoadmapTracksLaunchdAndStrictEnvironmentFiles(t *testing.T) {
 	for _, required := range []string{
 		"Strict local environment files", "macOS `launchd` generator", "[x] macOS `launchd` generator", "[x] `systemd` timer generator",
 		"[x] Cloudflare Worker generator and Cron Triggers", "generated executable contract tests",
+		"[x] Automate release smoke tests that observe actual `launchd` and `systemd`",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("product specification missing %q", required)

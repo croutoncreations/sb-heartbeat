@@ -112,9 +112,19 @@ func TestDockerIntegrationGatesPullRequestsAndReleases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	releaseText := string(release)
-	if !strings.Contains(releaseText, "verify:\n    uses: ./.github/workflows/test.yml") ||
-		!strings.Contains(releaseText, "needs:\n      - verify\n      - hosted-supabase") {
+	var parsedRelease struct {
+		Jobs map[string]struct {
+			Uses  string `yaml:"uses"`
+			Needs any    `yaml:"needs"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(release, &parsedRelease); err != nil {
+		t.Fatalf("parse release workflow: %v", err)
+	}
+	verify, verifyExists := parsedRelease.Jobs["verify"]
+	publish, publishExists := parsedRelease.Jobs["release"]
+	if !verifyExists || verify.Uses != "./.github/workflows/test.yml" || !publishExists ||
+		!workflowNeeds(publish.Needs, "verify") || !workflowNeeds(publish.Needs, "hosted-supabase") {
 		t.Fatal("release workflow does not depend on the reusable Docker-gated test workflow")
 	}
 	inspector, err := os.ReadFile(filepath.Join("..", "..", "scripts", "inspect-docker-oci.py"))
@@ -126,6 +136,20 @@ func TestDockerIntegrationGatesPullRequestsAndReleases(t *testing.T) {
 			t.Errorf("OCI inspector missing %q", fragment)
 		}
 	}
+}
+
+func workflowNeeds(value any, expected string) bool {
+	switch needs := value.(type) {
+	case string:
+		return needs == expected
+	case []any:
+		for _, need := range needs {
+			if need == expected {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestReleasePublishesAttestedMultiArchitectureGHCRImage(t *testing.T) {

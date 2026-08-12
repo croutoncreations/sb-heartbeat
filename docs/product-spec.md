@@ -127,15 +127,14 @@ The following remain part of the product plan after the completed 1.0 batches:
 - optional durable result backends such as Cloudflare KV;
 - backup checks and archive guidance;
 - paused-project inventory and optional Management API integration;
-- a separately named Homebrew tap;
-- automated calendar-delivery smoke tests for generated local schedulers; and
+- a separately named Homebrew tap; and
 - broader live Cloudflare coverage for both supported key forms and
   multi-project configurations.
 
 Completed follow-up work—including GHCR publication, local history,
-notifications, metrics, scheduler generators, `llms.txt`, multi-agent
-installation testing, and signed release provenance—remains recorded in the
-checked roadmap items below.
+notifications, metrics, scheduler generators and their calendar-delivery smoke
+tests, `llms.txt`, multi-agent installation testing, and signed release
+provenance—remains recorded in the checked roadmap items below.
 
 These items must remain visible in the roadmap and issue tracker. Deferring them
 does not remove them from the intended polished 1.0 release.
@@ -1269,8 +1268,11 @@ repository secret for its low-privilege key. Tests never target a production
 project and never print keys.
 
 The tag release workflow calls the complete reusable test workflow and requires
-the hosted Supabase integration job to pass before artifact publication. Missing
-integration secrets fail closed rather than skipping release verification.
+the hosted Supabase integration job and disposable calendar-delivery workflow
+to pass before artifact publication. The calendar workflow observes a real
+`StartCalendarInterval` event on macOS and a real `OnCalendar` event under an
+unprivileged Linux user manager; it never manually starts either probe service.
+Missing integration secrets fail closed rather than skipping release verification.
 The reusable workflow also builds the container, runs shell-free commands with
 a read-only filesystem as its numeric non-root user, and exports an unpublished
 Linux `amd64`/`arm64` OCI index.
@@ -1388,7 +1390,7 @@ without weakening that path.
 - [x] `systemd` timer generator.
 - [ ] Additional hosted execution backends beyond the generated Cloudflare
       Worker.
-- [ ] Automate release smoke tests that observe actual `launchd` and `systemd`
+- [x] Automate release smoke tests that observe actual `launchd` and `systemd`
       calendar delivery, not only direct service activation.
 - [ ] Expand live generated-Worker coverage to both publishable and legacy anon
       keys and a multi-project configuration.

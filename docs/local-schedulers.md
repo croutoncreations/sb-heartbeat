@@ -142,3 +142,36 @@ rules as the `launchd` generator. Simultaneous non-wildcard day-of-month and
 weekday restrictions are rejected instead of silently changing POSIX cron's OR
 semantics. User timers normally run only while the user manager is active; a
 Linux administrator may enable lingering when that behavior is appropriate.
+
+## Calendar-delivery release smoke tests
+
+SB Heartbeat's release gate observes actual calendar delivery rather than
+manually starting the generated service. The macOS harness loads a uniquely
+named disposable LaunchAgent and waits for its `StartCalendarInterval`. The
+Linux harness starts a pinned Ubuntu container, creates an unprivileged user
+manager, enables only the generated user timer, and waits for its `OnCalendar`
+event. Both use non-network probe executables, bounded waits, and exit-trapped
+cleanup; they do not need or receive Supabase credentials.
+
+The Linux harness launches its disposable systemd container with Docker
+`--privileged` and the host cgroup namespace because systemd must run as PID 1
+and create an isolated user manager. Although the generated probe service runs
+as an unprivileged container user, the container itself has host-level Docker
+privilege for the duration of the test. Review the script and run it only on a
+trusted development or CI host.
+
+Run the native macOS check with a current macOS binary:
+
+```bash
+scripts/integration-launchd-calendar.sh /absolute/path/to/sb-heartbeat
+```
+
+Run the Linux check with a Linux binary and Docker on Linux or macOS:
+
+```bash
+scripts/integration-systemd-calendar.sh /absolute/path/to/linux/sb-heartbeat
+```
+
+Each successful command prints a single `calendar delivery: PASS` line. Set
+`SB_HEARTBEAT_CALENDAR_TIMEOUT_SECONDS` to an integer from 240 through 600 only
+when a slower CI host needs a larger bounded wait.
