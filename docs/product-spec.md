@@ -1269,7 +1269,15 @@ project and never print keys.
 
 The tag release workflow calls the complete reusable test workflow and requires
 the hosted Supabase integration job and disposable calendar-delivery workflow
-to pass before artifact publication. The calendar workflow observes a real
+to pass before artifact publication. It also requires a protected Cloudflare
+live job that generates and tests a locked two-project Worker without
+credentials, deploys it only after those checks pass, verifies its uploaded
+source, secret-binding names, private routing, and exact Cron Trigger through
+the Cloudflare API, then observes an actual deployed scheduled invocation with
+sanitized logs before ownership-guarded cleanup. Its distinct release fixtures
+exercise one publishable key and one legacy anon key; missing, elevated,
+malformed, or reused-project inputs fail before deployment. The calendar
+workflow observes a real
 `StartCalendarInterval` event on macOS and a real `OnCalendar` event under an
 unprivileged Linux user manager; it never manually starts either probe service.
 Missing integration secrets fail closed rather than skipping release verification.

@@ -107,6 +107,62 @@ and inspect effective grants. The two low-privilege keys each perform the fixed
 live heartbeat. Tests do not print values or response bodies. Missing inputs
 fail the release; they are never treated as a skip.
 
+### Cloudflare live release fixture
+
+The release also deploys a uniquely named generated Worker, inspects its
+deployed configuration, observes an actual deployed Cron Trigger, and deletes
+the Worker after the check. Configure the six inputs below
+in the protected `cloudflare-live-release` environment:
+
+- `SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID`
+- `SB_HEARTBEAT_CLOUDFLARE_API_TOKEN`
+- `SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_URL`
+- `SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY`
+- `SB_HEARTBEAT_CLOUDFLARE_ANON_URL`
+- `SB_HEARTBEAT_CLOUDFLARE_ANON_KEY`
+
+Use two distinct dedicated Supabase projects: one fixture must use a current
+publishable key and the other a legacy anon key. Install the normal managed
+heartbeat table in each project and verify both with `sb-heartbeat doctor`
+before storing the values. Do not use production, staging, or downstream
+heartbeat projects as release fixtures.
+
+Create a Cloudflare API token scoped to the fixture account only, with the
+least privilege needed by the harness: `Workers Scripts: Edit` and
+`Workers Tail: Read`. Do not grant
+zone, DNS, billing, user, or account-management permissions. The harness uses
+that access to create and remove one uniquely named Worker, read its source,
+bindings, private subdomain settings, and Cron Trigger, and observe its sanitized
+logs. It refuses to remove a Worker unless the downloaded source
+contains its per-run ownership marker.
+
+Configure the GitHub environment with required reviewers and restrict its
+protected branches and tags to the default branch and release tags. The
+reusable workflow independently accepts only version tags, or a manual dispatch
+from `main`. Set values through protected prompts or standard input, never as
+command arguments:
+
+```bash
+for name in \
+  SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID \
+  SB_HEARTBEAT_CLOUDFLARE_API_TOKEN \
+  SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_URL \
+  SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY \
+  SB_HEARTBEAT_CLOUDFLARE_ANON_URL \
+  SB_HEARTBEAT_CLOUDFLARE_ANON_KEY; do
+  printf '%s' "${!name}" |
+    gh secret set "$name" \
+      --env cloudflare-live-release \
+      --repo croutoncreations/sb-heartbeat
+done
+```
+
+Dependency installation and generated contract tests run in a separate step
+before these secrets enter the job environment. The checked npm lock pins the
+entire dependency graph with integrity hashes; lifecycle scripts are disabled
+during installation. Missing credentials, a reused Supabase origin, unexpected
+Cloudflare state, failed execution, or unprovable cleanup fails closed.
+
 Configure the same project's URL and one publishable key for the lightweight
 scheduled heartbeat. These are repository-level bindings because this job must
 run without a protected-environment approval prompt:

@@ -19,6 +19,9 @@ jobs:
   calendar-delivery:
     uses: ./.github/workflows/calendar-smoke.yml
 
+  cloudflare-live:
+    uses: ./.github/workflows/cloudflare-live.yml
+
   hosted-supabase:
     runs-on: ubuntu-latest
     environment: hosted-supabase-release
@@ -44,6 +47,7 @@ jobs:
     needs:
       - verify
       - calendar-delivery
+      - cloudflare-live
       - hosted-supabase
     runs-on: ubuntu-latest
     permissions:
