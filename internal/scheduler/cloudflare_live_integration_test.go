@@ -32,6 +32,7 @@ func TestCloudflareLiveHarnessRequiresBothKeyFormsAndOwnsCleanup(t *testing.T) {
 		"wrangler deploy --dry-run",
 		`"${bundle_dir}/index.js"`,
 		"wrangler deploy --strict",
+		"--request DELETE",
 		"--secrets-file",
 		"wrangler tail",
 		"actual deployed Cron Trigger",
@@ -45,7 +46,6 @@ func TestCloudflareLiveHarnessRequiresBothKeyFormsAndOwnsCleanup(t *testing.T) {
 		"distinct hosted Supabase projects",
 		"ownership marker",
 		"trap cleanup EXIT",
-		"wrangler delete",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("Cloudflare live harness missing %q", required)
@@ -60,6 +60,7 @@ func TestCloudflareLiveHarnessRequiresBothKeyFormsAndOwnsCleanup(t *testing.T) {
 		"set -x",
 		`printf '\n// %s\n' "${ownership_marker}"`,
 		"grep -R -F",
+		"wrangler delete",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("Cloudflare live harness contains forbidden %q", forbidden)

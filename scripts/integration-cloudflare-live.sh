@@ -130,6 +130,14 @@ api_get() {
     "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker_name}${path}"
 }
 
+api_delete() {
+  local output="$1"
+  curl --silent --show-error --output "${output}" --write-out '%{http_code}' \
+    --request DELETE \
+    --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker_name}"
+}
+
 # shellcheck disable=SC2329 # Invoked through the EXIT trap.
 cleanup() {
   local status=$?
@@ -144,7 +152,10 @@ cleanup() {
     http_code="$(api_get "" "${script_copy}" || true)"
     if [[ "${http_code}" == "200" ]]; then
       if grep -F -- "${ownership_marker}" "${script_copy}" >/dev/null; then
-        if ! npx --no-install wrangler delete "${worker_name}" --force >/dev/null; then
+        local delete_result="${integration_dir}/cleanup-result"
+        http_code="$(api_delete "${delete_result}" || true)"
+        if [[ "${http_code}" != "200" ]] ||
+          ! jq -e '.success == true' "${delete_result}" >/dev/null 2>&1; then
           echo "Cloudflare live integration could not delete its owned Worker" >&2
           status=1
         fi
