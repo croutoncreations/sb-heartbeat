@@ -1402,7 +1402,7 @@ without weakening that path.
       Worker.
 - [x] Automate release smoke tests that observe actual `launchd` and `systemd`
       calendar delivery, not only direct service activation.
-- [ ] Expand live generated-Worker coverage to both publishable and legacy anon
+- [x] Expand live generated-Worker coverage to both publishable and legacy anon
       keys and a multi-project configuration.
 
 Release tags publish the already-tested Dockerfile as the exact tag
