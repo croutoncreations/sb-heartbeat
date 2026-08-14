@@ -111,21 +111,21 @@ fail the release; they are never treated as a skip.
 
 The release also deploys a uniquely named generated Worker, inspects its
 deployed configuration, observes an actual deployed Cron Trigger, and deletes
-the Worker after the check. Configure the six inputs below
-in the protected `cloudflare-live-release` environment:
+the Worker after the check. It reuses the protected
+`hosted-supabase-release` environment so GitHub can pass the existing dedicated
+release fixture's URL and publishable key directly to Wrangler without exposing
+or copying their values. Configure these additional inputs in that environment:
 
 - `SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID`
 - `SB_HEARTBEAT_CLOUDFLARE_API_TOKEN`
-- `SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_URL`
-- `SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY`
 - `SB_HEARTBEAT_CLOUDFLARE_ANON_URL`
 - `SB_HEARTBEAT_CLOUDFLARE_ANON_KEY`
 
-Use two distinct dedicated Supabase projects: one fixture must use a current
-publishable key and the other a legacy anon key. Install the normal managed
-heartbeat table in each project and verify both with `sb-heartbeat doctor`
-before storing the values. Do not use production, staging, or downstream
-heartbeat projects as release fixtures.
+The publishable-key side uses the existing dedicated release fixture through
+`SB_HEARTBEAT_HOSTED_URL` and `SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY`. The
+legacy-anon side uses the existing ToneClone dev heartbeat project. This keeps
+the origins distinct without creating another dedicated project. Both projects
+must retain the normal managed heartbeat table and pass `sb-heartbeat doctor`.
 
 Create a Cloudflare API token scoped to the fixture account only, with the
 least privilege needed by the harness: `Workers Scripts: Edit` and
@@ -146,13 +146,11 @@ command arguments:
 for name in \
   SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID \
   SB_HEARTBEAT_CLOUDFLARE_API_TOKEN \
-  SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_URL \
-  SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY \
   SB_HEARTBEAT_CLOUDFLARE_ANON_URL \
   SB_HEARTBEAT_CLOUDFLARE_ANON_KEY; do
   printf '%s' "${!name}" |
     gh secret set "$name" \
-      --env cloudflare-live-release \
+      --env hosted-supabase-release \
       --repo croutoncreations/sb-heartbeat
 done
 ```

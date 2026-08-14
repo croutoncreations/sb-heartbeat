@@ -28,6 +28,9 @@ func TestCloudflareLiveHarnessRequiresBothKeyFormsAndOwnsCleanup(t *testing.T) {
 		"install cloudflare",
 		"npm test -- --run",
 		"npm run check",
+		"SB_HEARTBEAT_LIVE_OWNERSHIP",
+		"wrangler deploy --dry-run",
+		`"${bundle_dir}/index.js"`,
 		"wrangler deploy --strict",
 		"--secrets-file",
 		"wrangler tail",
@@ -55,6 +58,8 @@ func TestCloudflareLiveHarnessRequiresBothKeyFormsAndOwnsCleanup(t *testing.T) {
 		"service_role",
 		"echo ${SB_HEARTBEAT_CLOUDFLARE_",
 		"set -x",
+		`printf '\n// %s\n' "${ownership_marker}"`,
+		"grep -R -F",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("Cloudflare live harness contains forbidden %q", forbidden)
@@ -67,13 +72,14 @@ func TestCloudflareLiveWorkflowFailsClosedAndGatesRelease(t *testing.T) {
 	for _, required := range []string{
 		"workflow_call:",
 		"workflow_dispatch:",
-		"environment: cloudflare-live-release",
+		"environment: hosted-supabase-release",
 		`integration-cloudflare-live.sh prepare`,
 		`integration-cloudflare-live.sh live`,
 		`if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')`,
 		"SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID }}",
 		"SB_HEARTBEAT_CLOUDFLARE_API_TOKEN: ${{ secrets.SB_HEARTBEAT_CLOUDFLARE_API_TOKEN }}",
-		"SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY: ${{ secrets.SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY }}",
+		"SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_URL: ${{ secrets.SB_HEARTBEAT_HOSTED_URL }}",
+		"SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY: ${{ secrets.SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY }}",
 		"SB_HEARTBEAT_CLOUDFLARE_ANON_KEY: ${{ secrets.SB_HEARTBEAT_CLOUDFLARE_ANON_KEY }}",
 		"timeout-minutes:",
 	} {
@@ -86,6 +92,9 @@ func TestCloudflareLiveWorkflowFailsClosedAndGatesRelease(t *testing.T) {
 	liveIndex := strings.Index(workflow, "integration-cloudflare-live.sh live")
 	if prepareIndex < 0 || secretIndex < 0 || liveIndex < 0 || !(prepareIndex < liveIndex && liveIndex < secretIndex) {
 		t.Error("Cloudflare dependencies and contract tests must run before credentials enter the step environment")
+	}
+	if strings.Contains(workflow, "environment: cloudflare-live-release") {
+		t.Error("Cloudflare live workflow must reuse the existing protected hosted fixture environment")
 	}
 
 	release := readRepositoryFile(t, ".github", "workflows", "release.yml")
@@ -116,16 +125,17 @@ func TestCloudflareLiveDependencyGraphIsCheckedIn(t *testing.T) {
 func TestCloudflareLiveReleaseEnvironmentIsDocumented(t *testing.T) {
 	docs := readRepositoryFile(t, "docs", "releasing.md")
 	for _, required := range []string{
-		"cloudflare-live-release",
+		"hosted-supabase-release",
 		"SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID",
 		"SB_HEARTBEAT_CLOUDFLARE_API_TOKEN",
-		"SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_URL",
-		"SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY",
+		"SB_HEARTBEAT_HOSTED_URL",
+		"SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY",
 		"SB_HEARTBEAT_CLOUDFLARE_ANON_URL",
 		"SB_HEARTBEAT_CLOUDFLARE_ANON_KEY",
 		"Workers Scripts: Edit",
 		"Workers Tail: Read",
-		"two distinct dedicated Supabase projects",
+		"existing dedicated release fixture",
+		"ToneClone dev",
 		"required reviewers",
 		"protected branches and tags",
 	} {

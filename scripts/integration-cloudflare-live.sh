@@ -8,6 +8,7 @@ prepared_dir=""
 integration_dir=""
 worker_name=""
 ownership_marker=""
+ownership_placeholder="sb-heartbeat-live-ownership:prepared"
 dev_pid=""
 
 usage() {
@@ -22,9 +23,10 @@ prepare() {
   fi
   local binary="$1"
   prepared_dir="$2"
-  local config_path
+  local config_path bundle_dir
   config_path="$(mktemp "${TMPDIR:-/tmp}/sb-heartbeat-cloudflare-config.XXXXXXXX")"
-  trap 'rm -f "${config_path}"' RETURN
+  bundle_dir="$(mktemp -d "${TMPDIR:-/tmp}/sb-heartbeat-cloudflare-bundle.XXXXXXXX")"
+  trap 'rm -f "${config_path}"; rm -r "${bundle_dir}"' RETURN
 
   cat >"${config_path}" <<'YAML'
 version: 1
@@ -47,11 +49,15 @@ YAML
     --output-dir "${prepared_dir}" --worker-name sb-heartbeat-live-contract
   cp "${repository_root}/internal/scheduler/testdata/cloudflare-live-package/package-lock.json" \
     "${prepared_dir}/package-lock.json"
+  printf '\nexport const SB_HEARTBEAT_LIVE_OWNERSHIP = "%s";\n' \
+    "${ownership_placeholder}" >>"${prepared_dir}/src/index.ts"
   (
     cd "${prepared_dir}"
     npm ci --ignore-scripts --no-audit --no-fund
     npm test -- --run
     npm run check
+    npx --no-install wrangler deploy --dry-run --outdir "${bundle_dir}" >/dev/null
+    grep -F -- "${ownership_placeholder}" "${bundle_dir}/index.js" >/dev/null
   )
 }
 
@@ -178,7 +184,16 @@ live() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
-  printf '\n// %s\n' "${ownership_marker}" >>"${prepared_dir}/src/index.ts"
+  local marker_count marker_source
+  marker_count="$(grep -F -c -- "${ownership_placeholder}" "${prepared_dir}/src/index.ts" || true)"
+  if [[ "${marker_count}" != "1" ]]; then
+    echo "Cloudflare live integration could not identify its prepared ownership marker" >&2
+    exit 1
+  fi
+  marker_source="${integration_dir}/index.ts"
+  sed "s/${ownership_placeholder}/${ownership_marker}/" \
+    "${prepared_dir}/src/index.ts" >"${marker_source}"
+  mv "${marker_source}" "${prepared_dir}/src/index.ts"
   cat >"${secrets_path}" <<EOF
 PUBLISHABLE_FIXTURE_URL=${SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_URL}
 PUBLISHABLE_FIXTURE_KEY=${SB_HEARTBEAT_CLOUDFLARE_PUBLISHABLE_KEY}

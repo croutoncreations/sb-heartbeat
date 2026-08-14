@@ -1274,8 +1274,10 @@ live job that generates and tests a locked two-project Worker without
 credentials, deploys it only after those checks pass, verifies its uploaded
 source, secret-binding names, private routing, and exact Cron Trigger through
 the Cloudflare API, then observes an actual deployed scheduled invocation with
-sanitized logs before ownership-guarded cleanup. Its distinct release fixtures
-exercise one publishable key and one legacy anon key; missing, elevated,
+sanitized logs before ownership-guarded cleanup. It consumes the existing
+dedicated release fixture's publishable key directly from the same protected
+GitHub environment and uses an existing non-production heartbeat project for
+the distinct legacy anon fixture. Missing, elevated,
 malformed, or reused-project inputs fail before deployment. The calendar
 workflow observes a real
 `StartCalendarInterval` event on macOS and a real `OnCalendar` event under an
