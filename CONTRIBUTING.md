@@ -16,3 +16,9 @@ Before release, also run the disposable PostgreSQL suite described in
 [`docs/releasing.md`](docs/releasing.md). The tag workflow repeats all normal,
 race, vet, golden, and PostgreSQL checks, then requires a dedicated hosted
 Supabase project before GoReleaser can publish.
+
+Documentation changes should keep current install examples synchronized and
+pass `go test ./internal/documentation` and `npx --yes markdownlint-cli2@0.23.2`.
+Before release, run `go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...`.
+Workflow and shell-script changes must also pass `actionlint` and `shellcheck`,
+respectively.

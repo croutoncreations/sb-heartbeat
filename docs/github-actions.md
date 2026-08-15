@@ -3,7 +3,7 @@
 Generate the workflow from a versioned SB Heartbeat release:
 
 ```bash
-sb-heartbeat install github --sb-heartbeat-version v0.2.0
+sb-heartbeat install github --sb-heartbeat-version v0.3.1
 ```
 
 Apply the generated install migration and run `sb-heartbeat doctor` successfully
@@ -74,7 +74,7 @@ incompatible workflow. Generated default URL-variable and API-key-secret
 configurations remain compatible with `v0.1.1` because they omit the source
 fields.
 
-### Add bindings with GitHub CLI
+## Add bindings with GitHub CLI
 
 Repository URLs are not credentials and can be added as variables by default:
 
@@ -98,7 +98,7 @@ Do not add a database connection URL, database password, secret key, or
 service-role key. Scheduled heartbeats need only the hosted project URL and one
 low-privilege client key.
 
-### Add bindings in the GitHub web interface
+## Add bindings in the GitHub web interface
 
 1. Open the downstream repository on GitHub and select **Settings**.
 2. Select **Secrets and variables**, then **Actions**.

@@ -18,7 +18,7 @@ func TestDockerfileIsPinnedNonRootAndReadOnlyCompatible(t *testing.T) {
 	text := string(contents)
 	required := []string{
 		"# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e",
-		"golang:1.26.5-alpine3.23@sha256:622e56dbc11a8cfe87cafa2331e9a201877271cbff918af53d3be315f3da88cc",
+		"golang:1.26.6-alpine3.23@sha256:5978cc992ad5ef96a7469713c8af849c1433824761ce3be2c56381403cd8d9a3",
 		"ARG TARGETOS",
 		"ARG TARGETARCH",
 		"CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH}",
@@ -281,12 +281,12 @@ func TestDockerDocumentationCoversPinnedGHCRConsumptionAndVerification(t *testin
 	}
 	text := string(docs)
 	for _, fragment := range []string{
-		"ghcr.io/croutoncreations/sb-heartbeat:v0.2.0",
+		"ghcr.io/croutoncreations/sb-heartbeat:v0.3.1",
 		"@sha256:",
 		"linux/amd64",
 		"linux/arm64",
 		"SBOM",
-		"gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.2.0 -R croutoncreations/sb-heartbeat",
+		"gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.3.1 -R croutoncreations/sb-heartbeat",
 		"package visibility",
 	} {
 		if !strings.Contains(text, fragment) {

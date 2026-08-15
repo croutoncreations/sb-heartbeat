@@ -6,7 +6,7 @@ configuration or environment-variable values, and never runs a heartbeat.
 
 To enable completion in the current shell session:
 
-### Bash
+## Bash
 
 Install and load [`bash-completion`](https://github.com/scop/bash-completion)
 for the Bash version you run, then source the generated script:
@@ -15,7 +15,7 @@ for the Bash version you run, then source the generated script:
 source <(sb-heartbeat completion bash)
 ```
 
-### Zsh
+## Zsh
 
 Initialize Zsh's completion system before sourcing the generated script:
 
@@ -24,13 +24,13 @@ autoload -U compinit && compinit
 source <(sb-heartbeat completion zsh)
 ```
 
-### Fish
+## Fish
 
 ```fish
 sb-heartbeat completion fish | source
 ```
 
-### PowerShell
+## PowerShell
 
 ```powershell
 sb-heartbeat completion powershell | Out-String | Invoke-Expression

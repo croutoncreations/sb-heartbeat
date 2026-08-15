@@ -24,15 +24,16 @@ authorization headers, response bodies, or error messages.
 
 The complete snapshot is limited to 1 MiB. If the configured run count would
 exceed that byte limit, the oldest complete entries are removed until the file
-fits. New files and replacements use mode `0600` on POSIX systems. Existing symlinks,
-non-regular files, malformed JSON, unknown fields, unsupported schema versions,
-and oversized snapshots are rejected rather than replaced.
+fits. New files and replacements use mode `0600` on POSIX systems. Existing
+symlinks, non-regular files, malformed JSON, unknown fields, unsupported schema
+versions, and oversized snapshots are rejected rather than replaced.
 
 On supported POSIX systems, writes use an atomic same-directory replacement, so
-readers see either the old or new complete snapshot. This is not a multi-writer database: concurrent
-processes are safe from partial files, but last writer wins and one process can
-replace another process's newly appended entry. Use one scheduler writer per
-history path, or give independent schedulers separate files.
+readers see either the old or new complete snapshot. This is not a multi-writer
+database: concurrent processes are safe from partial files, but last writer wins
+and one process can replace another process's newly appended entry. Use one
+scheduler writer per history path, or give independent schedulers separate
+files.
 
 A requested history write is part of the command's success contract. If it
 cannot be validated or written, SB Heartbeat returns internal-error exit code 3

@@ -2,9 +2,10 @@
 
 Tags do not publish immediately. The release workflow first calls the complete
 reusable test workflow, including normal tests, race detection, vet, full SQL
-and workflow goldens, and the disposable PostgreSQL suite. It then requires a
-live test against a dedicated hosted Supabase project and actual calendar
-delivery from disposable macOS `launchd` and Linux `systemd --user` schedules
+and workflow goldens, a reachable Go vulnerability scan, and the disposable
+PostgreSQL suite. It then requires a live test against a dedicated hosted
+Supabase project and actual calendar delivery from disposable macOS `launchd`
+and Linux `systemd --user` schedules
 before GoReleaser runs. The scheduler probes make no network requests and
 receive no repository secrets.
 
@@ -40,13 +41,13 @@ tag, or the release is unexpectedly public. GitHub does not expose a
 conditional publish operation, so repository writers remain trusted during the
 brief final check-to-publication interval.
 
-After publishing a version such as `v0.2.0`, verify the immutable release and a
+After publishing `v0.3.1`, verify the immutable release and a
 downloaded asset with GitHub CLI:
 
 ```bash
-gh release verify v0.2.0
-gh release verify-asset v0.2.0 sb-heartbeat_0.2.0_linux_amd64.tar.gz
-gh attestation verify sb-heartbeat_0.2.0_linux_amd64.tar.gz \
+gh release verify v0.3.1
+gh release verify-asset v0.3.1 sb-heartbeat_0.3.1_linux_amd64.tar.gz
+gh attestation verify sb-heartbeat_0.3.1_linux_amd64.tar.gz \
   -R croutoncreations/sb-heartbeat
 ```
 
@@ -123,7 +124,7 @@ or copying their values. Configure these additional inputs in that environment:
 
 The publishable-key side uses the existing dedicated release fixture through
 `SB_HEARTBEAT_HOSTED_URL` and `SB_HEARTBEAT_HOSTED_PUBLISHABLE_KEY`. The
-legacy-anon side uses the existing ToneClone dev heartbeat project. This keeps
+legacy-anon side uses an existing non-production heartbeat fixture. This keeps
 the origins distinct without creating another dedicated project. Both projects
 must retain the normal managed heartbeat table and pass `sb-heartbeat doctor`.
 
@@ -208,6 +209,7 @@ roles and the exact `public.sb_heartbeat` test object. Never point it at a
 production or shared database.
 
 Before pushing a tag, confirm that the scheduled fixture heartbeat is healthy,
-then also confirm the product-name/trademark prerequisite, inspect the generated
-artifacts, and verify that the repository's protected release environment
-limits access to the hosted integration secrets.
+inspect the generated artifacts, and verify that the repository's protected
+release environment limits access to the hosted integration secrets. Revisit
+the recorded public-project name/search decision before any material branding
+or distribution-channel change.

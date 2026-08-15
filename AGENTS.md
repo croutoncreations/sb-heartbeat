@@ -12,6 +12,8 @@ copied into repositories where SB Heartbeat is installed.
   behavior, collision guards, explicit grants, or elevated-key rejection.
 - Migration commands generate SQL only; they never apply it.
 - Generated workflows use exact versions, pinned action SHAs, and checksums.
+- Keep README, docs, release examples, and `llms.txt` synchronized. Run the
+  documentation tests and relative-link audit before a release.
 - Do not create or modify a downstream repository's `AGENTS.md`, `CLAUDE.md`,
   or equivalent instruction file.
 - Commit only after tests and a blocking review pass succeed.

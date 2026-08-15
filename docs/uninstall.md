@@ -57,7 +57,7 @@ Supabase project. Then generate the guarded removal SQL into that project's
 normal migration directory:
 
 ```bash
-sb-heartbeat migration uninstall --output supabase/migrations/20260804_remove_sb-heartbeat.sql
+sb-heartbeat migration uninstall --output supabase/migrations/20260815000000_remove_sb-heartbeat.sql
 ```
 
 This command generates SQL only; it does not apply the migration or connect to

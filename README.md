@@ -16,12 +16,12 @@ password, hosted account, or ongoing database writes.
 ## Quick start
 
 ```bash
-go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.2.0
+go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.3.1
 
 sb-heartbeat init \
   --non-interactive \
   --project-name my-staging-project \
-  --migration-output supabase/migrations/20260804_sb-heartbeat.sql
+  --migration-output supabase/migrations/20260815000000_sb-heartbeat.sql
 ```
 
 Review and apply the generated SQL through your normal migration process, then:
@@ -45,10 +45,10 @@ override the environment names derived from the project name.
 
 ## GitHub Actions
 
-After a release exists, generate a pinned, checksum-verifying workflow:
+Generate a pinned, checksum-verifying workflow:
 
 ```bash
-sb-heartbeat install github --sb-heartbeat-version v0.2.0
+sb-heartbeat install github --sb-heartbeat-version v0.3.1
 ```
 
 For each project, create the configured URL as a GitHub Actions variable and
@@ -96,6 +96,7 @@ sb-heartbeat install cron [--binary-path PATH] [--log-path PATH]
 sb-heartbeat --env-file PATH install launchd [--binary-path PATH] [--output-path PATH]
 sb-heartbeat --env-file PATH install systemd [--binary-path PATH] [--service-output PATH] [--timer-output PATH]
 sb-heartbeat install cloudflare [--output-dir PATH] [--worker-name NAME]
+sb-heartbeat completion bash|zsh|fish|powershell
 sb-heartbeat version
 ```
 

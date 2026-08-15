@@ -136,7 +136,7 @@ func TestCloudflareLiveReleaseEnvironmentIsDocumented(t *testing.T) {
 		"Workers Scripts: Edit",
 		"Workers Tail: Read",
 		"existing dedicated release fixture",
-		"ToneClone dev",
+		"existing non-production heartbeat fixture",
 		"required reviewers",
 		"protected branches and tags",
 	} {

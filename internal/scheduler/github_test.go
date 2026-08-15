@@ -456,8 +456,8 @@ func TestReleaseToolchainIncludesCurrentSecurityFix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(module), "toolchain go1.26.5\n") {
-		t.Fatalf("go.mod must select Go 1.26.5 or a deliberately reviewed successor")
+	if !strings.Contains(string(module), "toolchain go1.26.6\n") {
+		t.Fatalf("go.mod must select Go 1.26.6 or a deliberately reviewed successor")
 	}
 }
 

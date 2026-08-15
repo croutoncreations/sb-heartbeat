@@ -209,8 +209,8 @@ func TestReleaseDocumentationDefinesVerificationAndOneTimeSetup(t *testing.T) {
 	for _, required := range []string{
 		"Enable release immutability",
 		"draft",
-		"gh release verify v0.2.0",
-		"gh release verify-asset v0.2.0",
+		"gh release verify v0.3.1",
+		"gh release verify-asset v0.3.1",
 		"gh attestation verify",
 		"no release is published if attestation fails",
 	} {
@@ -221,6 +221,14 @@ func TestReleaseDocumentationDefinesVerificationAndOneTimeSetup(t *testing.T) {
 	spec := readFile(t, filepath.Join(root, "docs", "product-spec.md"))
 	if !strings.Contains(spec, "- [x] Signed artifacts and build provenance.") {
 		t.Fatal("signed artifact roadmap item is not complete")
+	}
+}
+
+func TestReusableTestWorkflowScansReachableGoVulnerabilities(t *testing.T) {
+	root := filepath.Join("..", "..")
+	workflow := readFile(t, filepath.Join(root, ".github", "workflows", "test.yml"))
+	if !strings.Contains(workflow, "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...") {
+		t.Fatal("reusable test workflow must run the reviewed govulncheck version")
 	}
 }
 

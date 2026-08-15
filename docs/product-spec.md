@@ -1,8 +1,8 @@
 # SB Heartbeat — Product Specification and Implementation Plan
 
-Status: Draft for implementation  
+Status: Maintained implementation plan
 Specification version: 0.4
-Last updated: 2026-08-11
+Last updated: 2026-08-15
 
 ## 1. Product summary
 
@@ -23,12 +23,15 @@ The product emphasizes:
 SB Heartbeat is not a hosted service. Users run it through infrastructure they
 already control through GitHub Actions, cron, generated macOS `launchd` and
 Linux `systemd` schedules, the non-root container image, or a generated
-Cloudflare Worker. Additional hosted execution backends remain planned 1.0
+Cloudflare Worker. Additional hosted execution backends remain planned as 1.0
 follow-up work.
 
 Product name: **SB Heartbeat**. The repository and package name are
 `sb-heartbeat`; PostgreSQL objects use the identifier-safe `sb_heartbeat`
-prefix. A formal trademark check remains a release prerequisite.
+prefix. A basic public-project name and search review is complete for the
+current open-source release. Formal legal clearance is outside this project's
+scope; the name decision should be revisited before material branding or
+distribution changes.
 
 ## 2. Problem
 
@@ -126,10 +129,8 @@ The following remain part of the product plan after the completed 1.0 batches:
 - additional hosted execution backends beyond the generated Cloudflare Worker;
 - optional durable result backends such as Cloudflare KV;
 - backup checks and archive guidance;
-- paused-project inventory and optional Management API integration;
-- a separately named Homebrew tap; and
-- broader live Cloudflare coverage for both supported key forms and
-  multi-project configurations.
+- paused-project inventory and optional Management API integration; and
+- a separately named Homebrew tap.
 
 Completed follow-up work—including GHCR publication, local history,
 notifications, metrics, scheduler generators and their calendar-delivery smoke
@@ -1268,8 +1269,9 @@ repository secret for its low-privilege key. Tests never target a production
 project and never print keys.
 
 The tag release workflow calls the complete reusable test workflow and requires
-the hosted Supabase integration job and disposable calendar-delivery workflow
-to pass before artifact publication. It also requires a protected Cloudflare
+the normal, race, vet, and reachable Go vulnerability checks, the hosted
+Supabase integration job, and the disposable calendar-delivery workflow to pass
+before artifact publication. It also requires a protected Cloudflare
 live job that generates and tests a locked two-project Worker without
 credentials, deploys it only after those checks pass, verifies its uploaded
 source, secret-binding names, private routing, and exact Cron Trigger through
@@ -1289,10 +1291,10 @@ Linux `amd64`/`arm64` OCI index.
 
 ## 19. Release and distribution
 
-Initial releases should provide GitHub release artifacts for macOS, Linux, and
-Windows on `amd64` and `arm64`, plus checksums. Versioned `go install` is
-supported. Homebrew, GHCR publication, signatures, and provenance are 1.0
-targets and may be added incrementally.
+Releases provide GitHub artifacts for macOS, Linux, and Windows on `amd64` and
+`arm64`, plus checksums, signed provenance, and immutable-release verification.
+Versioned `go install` and public multi-architecture GHCR images are supported.
+A separately named Homebrew tap remains planned.
 
 Signed binary publication is fail closed. Repository release immutability is a
 one-time administrative prerequisite checked before build publication.

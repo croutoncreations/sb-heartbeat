@@ -66,7 +66,7 @@ Release tags publish the same shell-free image to GitHub Container Registry for
 succeed. Pull an exact release tag; no mutable `latest` tag is published:
 
 ```bash
-docker pull ghcr.io/croutoncreations/sb-heartbeat:v0.2.0
+docker pull ghcr.io/croutoncreations/sb-heartbeat:v0.3.1
 ```
 
 For deployment, resolve that tag and pin the resulting digest, for example
@@ -76,7 +76,7 @@ to the pushed manifest digest. After authenticating Docker to GHCR, verify it
 against this repository:
 
 ```bash
-gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.2.0 -R croutoncreations/sb-heartbeat
+gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.3.1 -R croutoncreations/sb-heartbeat
 ```
 
 The release workflow pushes content by digest, attests that digest, and only
@@ -84,8 +84,7 @@ then creates the advertised version tag. It refuses to replace an existing
 version tag, and it treats authentication, registry, rate-limit, and network
 inspection failures as fatal rather than assuming the tag is absent.
 Publication uses the repository-scoped `GITHUB_TOKEN`; it does not require a
-personal access token. The first package is expected to be private. A
-repository owner must make the package visibility public once and confirm it is
-linked to this repository before advertising anonymous pulls. Visibility is
-repository administration, not something the release workflow changes
-automatically.
+personal access token. The package visibility is public and the package is
+linked to this repository, so anonymous exact-version and digest pulls are
+supported. Visibility remains a repository administration setting that the
+release workflow does not change.

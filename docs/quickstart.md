@@ -1,12 +1,23 @@
 # Quickstart
 
-## 1. Initialize
+## 1. Install an exact release
+
+```bash
+go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.3.1
+```
+
+Prebuilt archives and checksums are available from the
+[GitHub releases page](https://github.com/croutoncreations/sb-heartbeat/releases/tag/v0.3.1).
+Verify downloaded release assets as described in
+[Release verification](releasing.md).
+
+## 2. Initialize
 
 ```bash
 sb-heartbeat init \
   --non-interactive \
   --project-name demo \
-  --migration-output supabase/migrations/20260804_sb-heartbeat.sql
+  --migration-output supabase/migrations/20260815000000_sb-heartbeat.sql
 ```
 
 Interactive `sb-heartbeat init` asks for the same non-secret metadata. It never asks
@@ -19,16 +30,14 @@ generates `sb-heartbeat.sql` beside the configuration by default. Review and
 move that migration into the repository's established migration path when
 needed. Initialization generates SQL but never applies it.
 
-## 2. Generate and apply SQL
+## 3. Review and apply SQL
 
-```bash
-sb-heartbeat migration install --output supabase/migrations/20260804_sb-heartbeat.sql
-```
+Review the migration written by `init`, then apply it through your established
+Supabase migration process. SB Heartbeat deliberately has no command that
+applies SQL. If initialization did not generate a migration, create one at an
+explicit unused path with `sb-heartbeat migration install --output PATH`.
 
-Read the migration, then apply it through your established Supabase migration
-process. SB Heartbeat deliberately has no command that applies SQL.
-
-## 3. Set runtime values
+## 4. Set runtime values
 
 ```bash
 export SB_HEARTBEAT_DEMO_URL=https://your-project-ref.supabase.co
@@ -37,7 +46,7 @@ export SB_HEARTBEAT_DEMO_API_KEY=sb_publishable_your_key
 
 A legacy anon JWT works too. Do not use a secret or service-role key.
 
-## 4. Diagnose and run
+## 5. Diagnose and run
 
 ```bash
 sb-heartbeat doctor

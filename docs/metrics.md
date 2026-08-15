@@ -9,13 +9,12 @@ sb-heartbeat run --metrics /var/lib/node_exporter/textfile_collector/sb-heartbea
 
 Point `--metrics` at a directory read by a Prometheus textfile collector, such
 as the node exporter's textfile collector, or another consumer of the
-Prometheus text format. SB
-Heartbeat writes the file with mode `0644`, creates missing parent directories,
-and safely replaces a prior regular file. It refuses to overwrite a symlink or
-non-regular target. The metrics path must differ from the configuration,
-history, and notification-state paths. Metrics export is unavailable on
-Windows because SB Heartbeat cannot guarantee atomic replacement there;
-requesting it fails before network access.
+Prometheus text format. SB Heartbeat writes the file with mode `0644`, creates
+missing parent directories, and safely replaces a prior regular file. It
+refuses to overwrite a symlink or non-regular target. The metrics path must
+differ from the configuration, history, and notification-state paths. Metrics
+export is unavailable on Windows because SB Heartbeat cannot guarantee atomic
+replacement there; requesting it fails before network access.
 
 The file describes only the latest completed run:
 

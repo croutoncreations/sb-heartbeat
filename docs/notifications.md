@@ -14,10 +14,10 @@ sb-heartbeat run \
 
 The state path and webhook binding are explicit. `--notify-after` accepts 1
 through 100 and defaults to 3. `--notification-state` and
-`--notification-webhook-env` are required together. The webhook environment variable must contain an absolute
-HTTPS URL; the URL itself is never accepted as a command-line argument, stored
-in the state file, or included in an error message. Keep it in your scheduler's
-secret store rather than committing it.
+`--notification-webhook-env` are required together. The webhook environment
+variable must contain an absolute HTTPS URL; the URL itself is never accepted
+as a command-line argument, stored in the state file, or included in an error
+message. Keep it in your scheduler's secret store rather than committing it.
 
 Selecting that environment variable explicitly grants SB Heartbeat authority
 to send this fixed POST to its destination, including a private-network or IP
@@ -36,7 +36,7 @@ The receiver must accept this fixed JSON shape:
 {
   "schema_version": 1,
   "event": "repeated_failure",
-  "project": "toneclone-dev",
+  "project": "demo-staging",
   "status": "timeout",
   "episode": 4,
   "consecutive_failures": 3,
@@ -73,7 +73,7 @@ notification state by naming the GitHub secret that will hold the webhook:
 
 ```bash
 sb-heartbeat install github \
-  --sb-heartbeat-version v0.2.0 \
+  --sb-heartbeat-version v0.3.1 \
   --github-notification-webhook-secret SB_HEARTBEAT_NOTIFICATION_WEBHOOK \
   --notify-after 3
 ```
