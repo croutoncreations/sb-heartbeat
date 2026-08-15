@@ -57,7 +57,6 @@ config_path="${integration_dir}/sb-heartbeat.yaml"
 env_path="${integration_dir}/heartbeat.env"
 marker="systemd-calendar-delivery-${run_id}"
 ubuntu_image="ubuntu:24.04@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea"
-manager_capabilities_path="${integration_dir}/user-manager-capabilities.conf"
 
 if docker container inspect "${container_name}" >/dev/null 2>&1 || docker image inspect "${image_name}" >/dev/null 2>&1; then
   echo "systemd calendar smoke refuses to reuse existing temporary resources" >&2
@@ -134,17 +133,13 @@ docker exec --user 2000:2000 "${container_name}" \
   --timer-output "/home/calendar-smoke/.config/systemd/user/${unit_name}.timer"
 docker exec "${container_name}" grep -q '^OnCalendar=' "/home/calendar-smoke/.config/systemd/user/${unit_name}.timer"
 
-# The synthetic manager inside Docker starts without CAP_SETPCAP on some CI
-# kernels, so grant only that setup capability to the disposable manager. The
-# exact generated service still drops the complete bounding set before running.
-printf '%s\n' \
-  '[Service]' \
-  'CapabilityBoundingSet=CAP_SETPCAP' \
-  'AmbientCapabilities=CAP_SETPCAP' >"${manager_capabilities_path}"
-docker exec "${container_name}" mkdir -p /etc/systemd/system/user@2000.service.d
-docker cp "${manager_capabilities_path}" \
-  "${container_name}:/etc/systemd/system/user@2000.service.d/smoke-capabilities.conf"
-docker exec "${container_name}" systemctl daemon-reload
+# GitHub's nested container kernel cannot drop a user service's capability
+# bounding set. Prove the exact hardened directive was generated, then remove
+# only that unsupported directive from this disposable delivery fixture.
+docker exec "${container_name}" grep -qx 'CapabilityBoundingSet=' \
+  "/home/calendar-smoke/.config/systemd/user/${unit_name}.service"
+docker exec "${container_name}" sed -i '/^CapabilityBoundingSet=$/d' \
+  "/home/calendar-smoke/.config/systemd/user/${unit_name}.service"
 docker exec "${container_name}" systemctl start user-runtime-dir@2000.service
 if ! docker exec "${container_name}" systemctl start user@2000.service; then
   docker exec "${container_name}" systemctl status user@2000.service >&2 || true
