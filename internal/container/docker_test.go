@@ -281,12 +281,12 @@ func TestDockerDocumentationCoversPinnedGHCRConsumptionAndVerification(t *testin
 	}
 	text := string(docs)
 	for _, fragment := range []string{
-		"ghcr.io/croutoncreations/sb-heartbeat:v0.3.1",
+		"ghcr.io/croutoncreations/sb-heartbeat:v0.3.2",
 		"@sha256:",
 		"linux/amd64",
 		"linux/arm64",
 		"SBOM",
-		"gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.3.1 -R croutoncreations/sb-heartbeat",
+		"gh attestation verify oci://ghcr.io/croutoncreations/sb-heartbeat:v0.3.2 -R croutoncreations/sb-heartbeat",
 		"package visibility",
 	} {
 		if !strings.Contains(text, fragment) {

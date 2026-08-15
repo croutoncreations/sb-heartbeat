@@ -16,7 +16,7 @@ password, hosted account, or ongoing database writes.
 ## Quick start
 
 ```bash
-go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.3.1
+go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.3.2
 
 sb-heartbeat init \
   --non-interactive \
@@ -48,7 +48,7 @@ override the environment names derived from the project name.
 Generate a pinned, checksum-verifying workflow:
 
 ```bash
-sb-heartbeat install github --sb-heartbeat-version v0.3.1
+sb-heartbeat install github --sb-heartbeat-version v0.3.2
 ```
 
 For each project, create the configured URL as a GitHub Actions variable and

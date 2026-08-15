@@ -101,12 +101,18 @@ func TestCloudflareLiveWorkflowFailsClosedAndGatesRelease(t *testing.T) {
 	release := readRepositoryFile(t, ".github", "workflows", "release.yml")
 	for _, required := range []string{
 		"cloudflare-live:",
-		"uses: ./.github/workflows/cloudflare-live.yml",
+		"environment: hosted-supabase-release",
+		`integration-cloudflare-live.sh prepare`,
+		`integration-cloudflare-live.sh live`,
+		"SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.SB_HEARTBEAT_CLOUDFLARE_ACCOUNT_ID }}",
 		"- cloudflare-live",
 	} {
 		if !strings.Contains(release, required) {
 			t.Errorf("release workflow does not gate publication on live Cloudflare coverage: missing %q", required)
 		}
+	}
+	if strings.Contains(release, "uses: ./.github/workflows/cloudflare-live.yml") {
+		t.Error("release must run Cloudflare validation in its own environment-bound job so environment secrets are available")
 	}
 }
 

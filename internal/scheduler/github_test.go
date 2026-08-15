@@ -330,8 +330,8 @@ func TestReleaseWorkflowUsesProtectedHostedEnvironment(t *testing.T) {
 	text := string(workflow)
 	hostedJob := strings.Index(text, "  hosted-supabase:")
 	releaseJob := strings.Index(text, "  release:")
-	protectedEnvironment := strings.Index(text, "    environment: hosted-supabase-release")
-	if hostedJob < 0 || releaseJob < 0 || protectedEnvironment < hostedJob || protectedEnvironment > releaseJob {
+	if hostedJob < 0 || releaseJob < 0 || hostedJob >= releaseJob ||
+		!strings.Contains(text[hostedJob:releaseJob], "    environment: hosted-supabase-release") {
 		t.Fatalf("hosted integration job does not use the documented protected environment\n%s", text)
 	}
 }

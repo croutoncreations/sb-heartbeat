@@ -73,7 +73,7 @@ notification state by naming the GitHub secret that will hold the webhook:
 
 ```bash
 sb-heartbeat install github \
-  --sb-heartbeat-version v0.3.1 \
+  --sb-heartbeat-version v0.3.2 \
   --github-notification-webhook-secret SB_HEARTBEAT_NOTIFICATION_WEBHOOK \
   --notify-after 3
 ```

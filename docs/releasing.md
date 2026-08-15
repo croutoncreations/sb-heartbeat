@@ -41,13 +41,13 @@ tag, or the release is unexpectedly public. GitHub does not expose a
 conditional publish operation, so repository writers remain trusted during the
 brief final check-to-publication interval.
 
-After publishing `v0.3.1`, verify the immutable release and a
+After publishing `v0.3.2`, verify the immutable release and a
 downloaded asset with GitHub CLI:
 
 ```bash
-gh release verify v0.3.1
-gh release verify-asset v0.3.1 sb-heartbeat_0.3.1_linux_amd64.tar.gz
-gh attestation verify sb-heartbeat_0.3.1_linux_amd64.tar.gz \
+gh release verify v0.3.2
+gh release verify-asset v0.3.2 sb-heartbeat_0.3.2_linux_amd64.tar.gz
+gh attestation verify sb-heartbeat_0.3.2_linux_amd64.tar.gz \
   -R croutoncreations/sb-heartbeat
 ```
 

@@ -3,11 +3,11 @@
 ## 1. Install an exact release
 
 ```bash
-go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.3.1
+go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.3.2
 ```
 
 Prebuilt archives and checksums are available from the
-[GitHub releases page](https://github.com/croutoncreations/sb-heartbeat/releases/tag/v0.3.1).
+[GitHub releases page](https://github.com/croutoncreations/sb-heartbeat/releases/tag/v0.3.2).
 Verify downloaded release assets as described in
 [Release verification](releasing.md).
 
