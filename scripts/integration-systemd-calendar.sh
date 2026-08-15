@@ -55,6 +55,7 @@ image_name="sb-heartbeat-systemd-smoke:${run_id}"
 unit_name="sb-heartbeat-calendar-${run_id}"
 config_path="${integration_dir}/sb-heartbeat.yaml"
 env_path="${integration_dir}/heartbeat.env"
+service_user_path="${integration_dir}/service-user.conf"
 marker="systemd-calendar-delivery-${run_id}"
 ubuntu_image="ubuntu:24.04@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea"
 
@@ -133,27 +134,29 @@ docker exec --user 2000:2000 "${container_name}" \
   --timer-output "/home/calendar-smoke/.config/systemd/user/${unit_name}.timer"
 docker exec "${container_name}" grep -q '^OnCalendar=' "/home/calendar-smoke/.config/systemd/user/${unit_name}.timer"
 
-# GitHub's nested container kernel cannot drop a user service's capability
-# bounding set. Prove the exact hardened directive was generated, then remove
-# only that unsupported directive from this disposable delivery fixture.
+# GitHub's nested container kernel cannot apply capability hardening from an
+# unprivileged user manager. Load the exact generated units into the disposable
+# system manager and use a drop-in to keep the scheduled probe non-root.
 docker exec "${container_name}" grep -qx 'CapabilityBoundingSet=' \
   "/home/calendar-smoke/.config/systemd/user/${unit_name}.service"
-docker exec "${container_name}" sed -i '/^CapabilityBoundingSet=$/d' \
-  "/home/calendar-smoke/.config/systemd/user/${unit_name}.service"
-docker exec "${container_name}" systemctl start user-runtime-dir@2000.service
-if ! docker exec "${container_name}" systemctl start user@2000.service; then
-  docker exec "${container_name}" systemctl status user@2000.service >&2 || true
-  docker exec "${container_name}" journalctl --unit user@2000.service >&2 || true
-  exit 1
-fi
-docker exec "${container_name}" systemctl is-active --quiet user@2000.service
-user_systemctl=(docker exec "${container_name}" env XDG_RUNTIME_DIR=/run/user/2000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/2000/bus runuser --user calendar-smoke -- systemctl --user)
-"${user_systemctl[@]}" daemon-reload
-"${user_systemctl[@]}" enable --now "${unit_name}.timer"
+printf '%s\n' '[Service]' 'User=calendar-smoke' >"${service_user_path}"
+docker exec "${container_name}" mkdir -p \
+  "/etc/systemd/system/${unit_name}.service.d"
+docker exec "${container_name}" cp \
+  "/home/calendar-smoke/.config/systemd/user/${unit_name}.service" \
+  "/etc/systemd/system/${unit_name}.service"
+docker exec "${container_name}" cp \
+  "/home/calendar-smoke/.config/systemd/user/${unit_name}.timer" \
+  "/etc/systemd/system/${unit_name}.timer"
+docker cp "${service_user_path}" \
+  "${container_name}:/etc/systemd/system/${unit_name}.service.d/smoke-user.conf"
+system_systemctl=(docker exec "${container_name}" systemctl)
+"${system_systemctl[@]}" daemon-reload
+"${system_systemctl[@]}" enable --now "${unit_name}.timer"
 
 deadline=$((SECONDS + timeout_seconds))
 while (( SECONDS < deadline )); do
-  if docker exec "${container_name}" journalctl --quiet "_SYSTEMD_USER_UNIT=${unit_name}.service" --grep "${marker}" | grep -q "${marker}"; then
+  if docker exec "${container_name}" journalctl --quiet "_SYSTEMD_UNIT=${unit_name}.service" --grep "${marker}" | grep -q "${marker}"; then
     echo "systemd calendar delivery: PASS"
     exit 0
   fi
@@ -161,6 +164,6 @@ while (( SECONDS < deadline )); do
 done
 
 echo "systemd calendar delivery was not observed within ${timeout_seconds} seconds" >&2
-"${user_systemctl[@]}" status "${unit_name}.service" "${unit_name}.timer" >&2 || true
-docker exec "${container_name}" journalctl "_SYSTEMD_USER_UNIT=${unit_name}.service" >&2 || true
+"${system_systemctl[@]}" status "${unit_name}.service" "${unit_name}.timer" >&2 || true
+docker exec "${container_name}" journalctl "_SYSTEMD_UNIT=${unit_name}.service" >&2 || true
 exit 1
