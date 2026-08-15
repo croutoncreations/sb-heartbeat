@@ -56,6 +56,8 @@ func TestSystemdCalendarSmokeUsesDisposablePinnedContainerAndNoManualServiceStar
 		"libpam-systemd",
 		"install systemd",
 		"user@2000.service",
+		"CapabilityBoundingSet=CAP_SETPCAP",
+		"AmbientCapabilities=CAP_SETPCAP",
 		"XDG_RUNTIME_DIR=/run/user/2000",
 		"systemctl --user",
 		"enable --now",

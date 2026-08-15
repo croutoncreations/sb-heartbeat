@@ -209,8 +209,8 @@ func TestReleaseDocumentationDefinesVerificationAndOneTimeSetup(t *testing.T) {
 	for _, required := range []string{
 		"Enable release immutability",
 		"draft",
-		"gh release verify v0.3.2",
-		"gh release verify-asset v0.3.2",
+		"gh release verify v0.3.3",
+		"gh release verify-asset v0.3.3",
 		"gh attestation verify",
 		"no release is published if attestation fails",
 	} {

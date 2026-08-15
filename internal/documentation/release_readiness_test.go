@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const currentDocumentationVersion = "v0.3.2"
+const currentDocumentationVersion = "v0.3.3"
 
 func TestCurrentUserCommandsUseCurrentRelease(t *testing.T) {
 	root := filepath.Join("..", "..")
@@ -34,7 +34,7 @@ func TestCurrentUserCommandsUseCurrentRelease(t *testing.T) {
 		},
 		"docs/releasing.md": {
 			"gh release verify " + currentDocumentationVersion,
-			"sb-heartbeat_0.3.2_linux_amd64.tar.gz",
+			"sb-heartbeat_0.3.3_linux_amd64.tar.gz",
 		},
 	}
 
