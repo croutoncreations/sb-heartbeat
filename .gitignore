@@ -6,3 +6,10 @@
 dist/
 /sb-heartbeat
 coverage.out
+
+.devx/*
+!.devx/README.md
+!.devx/config.yaml
+!.devx/session.yaml.tmpl
+!.devx/smoke.sh
+!.devx/start_postgres.sh
