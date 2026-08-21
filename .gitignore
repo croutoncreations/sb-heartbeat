@@ -6,6 +6,10 @@
 dist/
 /sb-heartbeat
 coverage.out
+.artifacts/
+.envrc
+.tmuxp.yaml
+.worktrees/
 
 .devx/*
 !.devx/README.md
