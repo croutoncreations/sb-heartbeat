@@ -30,6 +30,13 @@ func projectFor(t *testing.T, name, rawURL string) Project {
 func healthyServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %q, want GET", r.Method)
+		}
+		// ContentLength is -1 for chunked bodies, so read the body to prove it is empty.
+		if body, err := io.ReadAll(io.LimitReader(r.Body, 1)); err != nil || len(body) != 0 {
+			t.Errorf("request body = %q, %v; want empty", body, err)
+		}
 		if r.URL.Path != "/rest/v1/sb_heartbeat" {
 			t.Errorf("path = %q", r.URL.Path)
 		}

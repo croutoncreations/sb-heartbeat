@@ -1,5 +1,7 @@
 # SB Heartbeat
 
+![Animated overview: an idle Supabase project's flat line gets a pulse from SB Heartbeat and shows as active, followed by its features: keeping low-traffic projects active, one tiny read-only query, running on GitHub Actions, Cloudflare Workers, Docker, cron, launchd, or systemd, and coding-agent support.](docs/assets/sb-heartbeat-promo.gif)
+
 Keep intentionally retained, low-traffic Supabase projects active with a
 least-privilege database heartbeat.
 

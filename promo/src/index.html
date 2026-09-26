@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sb-heartbeat promo</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="stage">
+  <svg id="ecg" aria-hidden="true">
+    <path id="ecg-base" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="ecg-beat" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <!-- Scene: flatline / pulse -->
+  <section class="scene" id="s-open">
+    <div class="project-card" id="open-card">
+      <div class="db-icon"><span></span><span></span><span></span></div>
+      <div>
+        <div class="project-name">my-side-project</div>
+        <div class="project-meta">Supabase · low traffic</div>
+      </div>
+      <div class="badge" id="open-badge"><i></i><b>Idle</b></div>
+    </div>
+    <h1 class="caption" id="open-caption">Quiet Supabase project?</h1>
+    <div class="title-block" id="open-title">
+      <div class="logotype"><span class="logo-mark"><svg viewBox="0 0 40 24"><path d="M1 12h9l3-7 5 16 5-18 4 9h12"/></svg></span>sb-heartbeat</div>
+      <h1 class="headline">Don’t let it flatline.</h1>
+    </div>
+  </section>
+
+  <!-- Feature 1 -->
+  <section class="scene feature" id="s-active">
+    <div class="kicker">01</div>
+    <h2>Keeps low-traffic projects active</h2>
+    <p class="sub">Scheduled heartbeats, three times a day by default.</p>
+    <div class="week" id="week"></div>
+  </section>
+
+  <!-- Feature 2 -->
+  <section class="scene feature" id="s-query">
+    <div class="kicker">02</div>
+    <h2>One tiny, read-only query</h2>
+    <div class="req-row">
+      <div class="pill mono" id="req"><span class="verb">GET</span> <span id="req-text"></span><span class="cursor" id="req-cursor"></span></div>
+      <div class="arrow" id="req-arrow">→</div>
+      <div class="pill mono ok" id="res"><span class="status">200</span> [{"id":true}]</div>
+    </div>
+    <ul class="ticks" id="query-ticks">
+      <li>Low-privilege key only</li>
+      <li>No writes</li>
+      <li>No database password</li>
+    </ul>
+  </section>
+
+  <!-- Feature 3 -->
+  <section class="scene feature" id="s-anywhere">
+    <div class="kicker">03</div>
+    <h2>Runs wherever you already run things</h2>
+    <div class="grid" id="targets">
+      <div class="target"><b>GitHub Actions</b><span>pinned workflow</span></div>
+      <div class="target"><b>Cloudflare Workers</b><span>cron trigger</span></div>
+      <div class="target"><b>Docker</b><span>read-only container</span></div>
+      <div class="target"><b>cron</b><span>crontab entry</span></div>
+      <div class="target"><b>launchd</b><span>macOS LaunchAgent</span></div>
+      <div class="target"><b>systemd</b><span>Linux timer</span></div>
+    </div>
+  </section>
+
+  <!-- Feature 4 -->
+  <section class="scene feature" id="s-agents">
+    <div class="kicker">04</div>
+    <h2>Ready for coding agents</h2>
+    <div class="chat">
+      <div class="bubble user" id="chat-user">Add sb-heartbeat to this repo.</div>
+      <ul class="steps" id="agent-steps">
+        <li>Read <code>llms.txt</code></li>
+        <li>Installed a checksum-verified release</li>
+        <li>Generated migration SQL for review</li>
+        <li><code>sb-heartbeat doctor</code> → healthy</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Feature 5 -->
+  <section class="scene feature" id="s-more">
+    <div class="kicker">+</div>
+    <h2>And more</h2>
+    <div class="chips" id="chips">
+      <span>doctor diagnostics</span>
+      <span>JSON output</span>
+      <span>Prometheus metrics</span>
+      <span>Failure webhooks</span>
+      <span>Status history</span>
+      <span>Multiple projects</span>
+      <span>Stable exit codes</span>
+      <span>Open source · MIT</span>
+    </div>
+  </section>
+
+  <!-- End card -->
+  <section class="scene" id="s-end">
+    <div class="logotype big"><span class="logo-mark"><svg viewBox="0 0 40 24"><path d="M1 12h9l3-7 5 16 5-18 4 9h12"/></svg></span>sb-heartbeat</div>
+    <p class="tagline">A tiny pulse for quiet Supabase projects.</p>
+    <div class="install mono" id="install"><span class="prompt">$</span> <span id="install-text"></span></div>
+    <div class="repo mono">github.com/croutoncreations/sb-heartbeat</div>
+  </section>
+</div>
+<script src="timeline.js"></script>
+</body>
+</html>
