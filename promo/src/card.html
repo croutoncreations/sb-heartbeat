@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sb-heartbeat social card</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* Static link-preview card. Size comes from ?w=&h= (GitHub 1280x640, Open Graph 1200x630). */
+  body { width: var(--cw); height: var(--ch); }
+  .card { position: relative; width: var(--cw); height: var(--ch); overflow: hidden; }
+  .card svg.ecg { position: absolute; left: 0; width: 100%; top: 0; height: 100%; }
+  .card svg.ecg path { fill: none; stroke: var(--green); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.9; }
+  .content {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; text-align: center; padding-bottom: 150px;
+  }
+  .content .logotype { font-size: 72px; gap: 24px; }
+  .content .tagline { font-size: 34px; }
+  .content .features { color: var(--muted); font-size: 22px; font-weight: 600; margin-top: 6px; }
+  .content .repo { position: absolute; bottom: 44px; font-size: 20px; }
+  .content .headline { display: none; }
+
+  /* ?variant=title: the video's title card (logo + headline). */
+  body.title .tagline, body.title .features, body.title .repo { display: none; }
+  body.title .content .headline { display: block; font-size: 84px; }
+  body.title .content .logotype { font-size: 56px; }
+
+  /* ?variant=logo: logotype only, transparent background. */
+  html:has(body.logo), body.logo { background: transparent; }
+  body.logo .ecg, body.logo .tagline, body.logo .features, body.logo .repo { display: none; }
+  body.logo .content { padding: 0; }
+  body.logo .content .logotype { font-size: 96px; gap: 30px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <svg class="ecg" aria-hidden="true"><path id="trace"/></svg>
+  <div class="content">
+    <div class="logotype"><span class="logo-mark"><svg viewBox="0 0 40 24"><path d="M1 12h9l3-7 5 16 5-18 4 9h12"/></svg></span>sb-heartbeat</div>
+    <h1 class="headline">Don’t let it flatline.</h1>
+    <p class="tagline">A tiny pulse for quiet Supabase projects.</p>
+    <p class="features">One read-only query · GitHub Actions, Cloudflare, cron &amp; more · Agent-ready</p>
+    <div class="repo mono">github.com/croutoncreations/sb-heartbeat</div>
+  </div>
+</div>
+<script>
+  const p = new URLSearchParams(location.search);
+  const variant = p.get("variant");
+  if (variant === "title" || variant === "logo") document.body.classList.add(variant);
+  const W = Number(p.get("w")) || 1200;
+  const H = Number(p.get("h")) || 630;
+  document.documentElement.style.setProperty("--cw", W + "px");
+  document.documentElement.style.setProperty("--ch", H + "px");
+  // Same PQRST complex as the video, drawn along the lower third.
+  const MID = H * 0.72, AMP = 60, PERIOD = 300;
+  const C = [[-70,0],[-58,-0.1],[-46,0],[-16,0],[-10,0.14],[0,-1],[9,0.5],[16,0],[42,0],[58,-0.18],[74,0]];
+  const y = (x) => {
+    const l = ((x % PERIOD) + PERIOD) % PERIOD - PERIOD / 2;
+    for (let i = 0; i < C.length - 1; i++) {
+      const [x0, y0] = C[i], [x1, y1] = C[i + 1];
+      if (l >= x0 && l <= x1) return MID + AMP * (y0 + ((l - x0) / (x1 - x0)) * (y1 - y0));
+    }
+    return MID;
+  };
+  let d = `M0 ${y(0)}`;
+  for (let x = 1; x <= W; x++) d += `L${x} ${y(x).toFixed(1)}`;
+  const svg = document.querySelector("svg.ecg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  document.getElementById("trace").setAttribute("d", d);
+</script>
+</body>
+</html>
