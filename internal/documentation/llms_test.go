@@ -74,6 +74,7 @@ func TestLLMsDiscoveryLinksResolveToExpectedDocumentation(t *testing.T) {
 		"docs/troubleshooting.md":      false, "docs/product-spec.md": false,
 		"docs/agent-install.md": false, "docs/agent-prompts.md": false,
 		"docs/agent-evaluation.md": false, "docs/local-cron.md": false,
+		"docs/local-schedulers.md": false, "docs/cloudflare.md": false,
 		"docs/docker.md": false, "docs/uninstall.md": false,
 		"docs/status-history.md": false,
 		"docs/notifications.md":  false,
