@@ -2,7 +2,7 @@
 
 > A safety-focused CLI for keeping intentionally retained Supabase projects active with a fixed, read-only heartbeat.
 
-SB Heartbeat uses a Supabase project URL and a low-privilege publishable or legacy anon key. It never needs a database password, secret key, service-role key, or Management API token. The CLI generates guarded migration SQL, validates configuration and credentials before network access, and supports local or generated GitHub Actions execution.
+SB Heartbeat uses a Supabase project URL and a low-privilege publishable or legacy anon key. It never needs a database password, secret key, service-role key, or Management API token. The CLI generates guarded migration SQL, validates configuration and credentials before network access, and generates reviewable scheduler integrations for GitHub Actions, a Cloudflare Worker, cron, launchd, and systemd, or runs from an exact-version container image. Generators never deploy, load, or edit a scheduler.
 
 Agent safety contract:
 
@@ -29,13 +29,15 @@ Agent safety contract:
 ## Agent tasks
 
 - [Agent installation guide](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-install.md): Ordered installation procedure and prohibited actions.
-- [Copyable agent prompts](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-prompts.md): Prepare, verify, and local-cron tasks with bounded authority.
+- [Copyable agent prompts](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-prompts.md): Prepare, verify, local-cron, and safe-removal tasks with bounded authority.
 - [Coding-agent evaluation](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/agent-evaluation.md): Reproducible two-agent installation evidence and retained sanitized artifacts.
 
 ## Optional
 
 - [Local cron](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/local-cron.md): Read-only cron suggestion generation, environment handling, logs, and monitoring.
-- [Container](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/docker.md): Hardened local container build, read-only runtime, and multi-architecture verification.
+- [Local scheduler generators](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/local-schedulers.md): Reviewable macOS launchd LaunchAgent and hardened Linux systemd user service and timer, never loaded automatically.
+- [Cloudflare Worker generator](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/cloudflare.md): Tested, cron-only TypeScript Worker project generated without deploying it or storing credential values.
+- [Container](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/docker.md): Hardened read-only runtime, exact-version multi-architecture GHCR release images with provenance, SBOM, and attestation, and local builds.
 - [Stop heartbeats and uninstall](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/uninstall.md): Scheduler-first offboarding, shared-binding checks, guarded SQL generation, and archive handoff.
 - [Local status history](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/status-history.md): Opt-in bounded atomic snapshots with a deliberately sanitized schema.
 - [Repeated-failure notifications](https://github.com/croutoncreations/sb-heartbeat/blob/main/docs/notifications.md): Thresholded HTTPS webhook events backed by private, durable, sanitized local state.

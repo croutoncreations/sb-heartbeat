@@ -1,25 +1,64 @@
 # SB Heartbeat
 
-![Animated overview: an idle Supabase project's flat line gets a pulse from SB Heartbeat and shows as active, followed by its features: keeping low-traffic projects active, one tiny read-only query, running on GitHub Actions, Cloudflare Workers, Docker, cron, launchd, or systemd, and coding-agent support.](docs/assets/sb-heartbeat-promo.gif)
+![Animated overview: an idle Supabase project's flat line gets a pulse from SB Heartbeat and shows as active, followed by its features: keeping low-traffic projects active, one tiny read-only query, running on GitHub Actions, Cloudflare Workers, Docker, cron, launchd, or systemd, and easy installation and management by coding agents.](docs/assets/sb-heartbeat-promo.gif)
 
 Keep intentionally retained, low-traffic Supabase projects active with a
 least-privilege database heartbeat.
 
-SB Heartbeat is a small Go CLI for GitHub Actions and local schedulers. It queries
-one fixed row through the Supabase Data API using either a publishable key or a
-legacy anon key. It does not require a secret key, service-role key, database
-password, hosted account, or ongoing database writes.
+SB Heartbeat is a small Go CLI that runs wherever you already schedule jobs. It
+queries one fixed row through the Supabase Data API using either a publishable
+key or a legacy anon key. It does not require a secret key, service-role key,
+database password, hosted account, or ongoing database writes.
 
 > [!IMPORTANT]
 > SB Heartbeat is best-effort. Supabase controls its project-activity classifier and
 > can change it. Production projects should use an appropriate paid plan, and
 > projects you no longer need should be archived rather than kept running.
 
-## Quick start
+## Features
+
+- **Keeps low-traffic projects active.** Scheduled heartbeats run three times a
+  day by default, across one or many projects.
+- **One tiny, read-only query.** A fixed, read-only `GET` reads one row from a
+  dedicated table; transient failures may be retried. Only `SELECT (id)` is granted, and elevated keys are
+  rejected before any network request.
+- **Runs wherever you already run things.** Generate a
+  [GitHub Actions workflow](docs/github-actions.md), a
+  [Cloudflare Worker](docs/cloudflare.md), [cron](docs/local-cron.md),
+  [launchd, or systemd](docs/local-schedulers.md) configuration, or use the
+  [Docker image](docs/docker.md). Generators produce reviewable output; they never
+  deploy, load, or edit schedulers for you.
+- **Built for coding agents to install and manage.** [`llms.txt`](llms.txt), an
+  [agent installation guide](docs/agent-install.md), and
+  [copyable prompts](docs/agent-prompts.md) let your coding agent set it up,
+  verify it with `doctor`, and later remove it, with explicit safety boundaries.
+  The installation guidance is
+  [tested with independent agents](docs/agent-evaluation.md).
+- **Clear diagnostics and monitoring.** `doctor` explains failures with stable
+  codes. Opt into JSON output, [status history](docs/status-history.md),
+  [Prometheus metrics](docs/metrics.md),
+  [repeated-failure webhooks](docs/notifications.md), and
+  [GitHub annotations and artifacts](docs/github-observability.md).
+- **Verifiable releases.** Prebuilt binaries for macOS, Linux, and Windows
+  (amd64 and arm64) ship with checksums and signed build provenance.
+
+## Installation
+
+Install an exact release with Go:
 
 ```bash
 go install github.com/croutoncreations/sb-heartbeat/cmd/sb-heartbeat@v0.3.3
+```
 
+Or download a prebuilt archive from the
+[v0.3.3 release](https://github.com/croutoncreations/sb-heartbeat/releases/tag/v0.3.3)
+and verify it as described in [Release verification](docs/releasing.md). A
+multi-architecture container image is published to
+`ghcr.io/croutoncreations/sb-heartbeat:v0.3.3`; see [Docker](docs/docker.md).
+
+## Quick start
+
+```bash
 sb-heartbeat init \
   --non-interactive \
   --project-name my-staging-project \
@@ -60,6 +99,8 @@ Interactive initialization suggests the current repository name, displays the
 exact derived binding names, and can collect multiple projects. Existing
 GitHub binding names can be entered instead of the derived defaults.
 
+## Other schedulers
+
 For a local scheduler, `sb-heartbeat install cron` prints a shell-safe suggested
 entry and the required environment-variable names. It never edits your crontab.
 `sb-heartbeat install launchd` generates a reviewable macOS user LaunchAgent
@@ -69,6 +110,14 @@ without loading it. Both scheduled and manual runs can use a strict private
 service and timer without loading or enabling either unit.
 `sb-heartbeat install cloudflare` generates a tested, cron-only TypeScript
 Worker project without deploying it or storing credential values.
+
+## Using a coding agent
+
+Point your agent at [`llms.txt`](llms.txt) or give it one of the
+[copyable prompts](docs/agent-prompts.md). The guidance tells agents to use an
+exact, checksum-verified release, configure environment-variable names rather
+than key values, generate SQL without applying it, never modify your
+repository's `AGENTS.md` or `CLAUDE.md`, and report every remaining manual step.
 
 ## Security model
 
