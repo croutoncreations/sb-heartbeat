@@ -18,7 +18,7 @@ func TestDockerfileIsPinnedNonRootAndReadOnlyCompatible(t *testing.T) {
 	text := string(contents)
 	required := []string{
 		"# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e",
-		"golang:1.26.6-alpine3.23@sha256:5978cc992ad5ef96a7469713c8af849c1433824761ce3be2c56381403cd8d9a3",
+		"golang:1.26.10-alpine3.23@sha256:0525c952defebc693cdaf62cdf43afa32be5a7f377e99260642ea19c240c708e",
 		"ARG TARGETOS",
 		"ARG TARGETARCH",
 		"CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH}",

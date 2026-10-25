@@ -44,6 +44,10 @@ database password, hosted account, or ongoing database writes.
 
 ## Installation
 
+Repository builds select the security-patched Go 1.26.10 toolchain; see
+[Release verification](docs/releasing.md#security-toolchain-baseline). Existing
+release binaries require a rebuild to receive standard-library security fixes.
+
 Install an exact release with Go:
 
 ```bash
