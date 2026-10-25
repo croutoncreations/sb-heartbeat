@@ -9,6 +9,16 @@ and Linux `systemd --user` schedules
 before GoReleaser runs. The scheduler probes make no network requests and
 receive no repository secrets.
 
+## Security toolchain baseline
+
+Repository builds select Go 1.26.10 through `go.mod`; the Docker builder uses
+the same patch release with an immutable official image digest. Go 1.26.10 is
+the minimum supported 1.26 patch covering [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809)
+and the HTTP/TLS fixes in [Go 1.26.9](https://go.dev/doc/devel/release#go1.26.9).
+CI keeps the reachable vulnerability scan enabled. Rebuild binaries and container
+images to apply these standard-library fixes; changing the source toolchain pin
+does not update previously published artifacts or running installations.
+
 ## One-time immutable release setup
 
 Before the next release, a repository owner must open repository **Settings**,

@@ -33,7 +33,7 @@ jobs:
           cache: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 24.6.0
+          node-version: 24.22.1
       - run: go build -o "${RUNNER_TEMP}/sb-heartbeat" ./cmd/sb-heartbeat
       - name: Install locked dependencies and verify generated contract without credentials
         run: scripts/integration-cloudflare-live.sh prepare "${RUNNER_TEMP}/sb-heartbeat" "${RUNNER_TEMP}/cloudflare-live-worker"
