@@ -101,7 +101,7 @@ func TestDockerIntegrationGatesPullRequestsAndReleases(t *testing.T) {
 	text := string(workflow)
 	for _, fragment := range []string{
 		"docker-integration:",
-		"runs-on: ubuntu-latest",
+		"runs-on: blacksmith-2vcpu-ubuntu-2404",
 		"scripts/integration-docker.sh",
 	} {
 		if !strings.Contains(text, fragment) {
