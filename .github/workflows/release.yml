@@ -20,7 +20,7 @@ jobs:
     uses: ./.github/workflows/calendar-smoke.yml
 
   cloudflare-live:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 25
     environment: hosted-supabase-release
     permissions:
@@ -48,7 +48,7 @@ jobs:
           SB_HEARTBEAT_CLOUDFLARE_ANON_KEY: ${{ secrets.SB_HEARTBEAT_CLOUDFLARE_ANON_KEY }}
 
   hosted-supabase:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     environment: hosted-supabase-release
     permissions:
       contents: read
@@ -74,6 +74,7 @@ jobs:
       - calendar-delivery
       - cloudflare-live
       - hosted-supabase
+    # Stays GitHub-hosted so build-provenance attestations record a github-hosted runner.
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -167,6 +168,7 @@ jobs:
 
   publish-container:
     needs: release
+    # Stays GitHub-hosted so build-provenance attestations record a github-hosted runner.
     runs-on: ubuntu-latest
     permissions:
       contents: read

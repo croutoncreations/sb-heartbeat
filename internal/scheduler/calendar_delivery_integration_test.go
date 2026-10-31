@@ -87,7 +87,7 @@ func TestCalendarSmokeWorkflowRunsBothSchedulersAndGatesRelease(t *testing.T) {
 		"workflow_call:",
 		"workflow_dispatch:",
 		"macos-15",
-		"ubuntu-24.04",
+		"blacksmith-2vcpu-ubuntu-2404",
 		"scripts/integration-launchd-calendar.sh",
 		"scripts/integration-systemd-calendar.sh",
 		"timeout-minutes:",
